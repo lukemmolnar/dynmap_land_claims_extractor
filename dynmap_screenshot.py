@@ -11,7 +11,8 @@ import os
 import argparse
 from datetime import datetime
 
-def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, x_coord=None, z_coord=None):
+def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, 
+                   x_coord=None, z_coord=None, zoom_out_clicks=1):
     """
     Captures a screenshot of a dynmap webpage using Playwright.
     
@@ -23,6 +24,7 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
         viewport_height (int, optional): Height of the viewport. Default is 1080.
         x_coord (int, optional): X coordinate to navigate to before taking screenshot.
         z_coord (int, optional): Z coordinate to navigate to before taking screenshot.
+        zoom_out_clicks (int, optional): Number of times to click the zoom-out button. Default is 2.
         
     Returns:
         str: Path to the saved screenshot
@@ -77,6 +79,20 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
             else:
                 print("Warning: Could not find coordinate input fields. Taking screenshot without navigating.")
         
+        # If zoom_out_clicks is specified, click the zoom-out button that many times
+        if zoom_out_clicks > 0:
+            print(f"Zooming out {zoom_out_clicks} time(s) for better view...")
+            zoom_out_button = page.query_selector("#zoom-buttons > div.svg-button:nth-child(2)")
+            
+            if zoom_out_button:
+                for i in range(zoom_out_clicks):
+                    zoom_out_button.click()
+                    print(f"Zoom out click {i+1}/{zoom_out_clicks}")
+                    # Wait for the map to update after zoom
+                    time.sleep(2)
+            else:
+                print("Warning: Could not find zoom-out button. Taking screenshot without zooming.")
+        
         # Take screenshot
         print("Taking screenshot...")
         page.screenshot(path=output_path)
@@ -124,6 +140,12 @@ def main():
         type=int,
         help="Z coordinate to navigate to before taking screenshot."
     )
+    parser.add_argument(
+        "--zoom-out",
+        type=int,
+        default=2,
+        help="Number of times to click the zoom-out button (default: 2)"
+    )
     
     args = parser.parse_args()
     
@@ -134,7 +156,8 @@ def main():
         args.width, 
         args.height,
         args.x_coord,
-        args.z_coord
+        args.z_coord,
+        args.zoom_out
     )
 
 if __name__ == "__main__":
