@@ -33,6 +33,8 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `-w, --wait`: Time in seconds to wait for the map to load (default: 10)
 - `--width`: Width of the viewport (default: 1920)
 - `--height`: Height of the viewport (default: 1080)
+- `-x, --x-coord`: X coordinate to navigate to before taking screenshot (optional)
+- `-z, --z-coord`: Z coordinate to navigate to before taking screenshot (optional)
 
 ### Examples
 
@@ -52,6 +54,12 @@ Change the viewport size:
 
 ```bash
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective --width 2560 --height 1440
+```
+
+Navigate to specific coordinates before taking the screenshot:
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093
 ```
 
 ## Troubleshooting

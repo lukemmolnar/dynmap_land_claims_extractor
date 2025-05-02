@@ -11,7 +11,7 @@ import os
 import argparse
 from datetime import datetime
 
-def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080):
+def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, x_coord=None, z_coord=None):
     """
     Captures a screenshot of a dynmap webpage using Playwright.
     
@@ -21,6 +21,8 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
         wait_time (int, optional): Time in seconds to wait for the map to load. Default is 10.
         viewport_width (int, optional): Width of the viewport. Default is 1920.
         viewport_height (int, optional): Height of the viewport. Default is 1080.
+        x_coord (int, optional): X coordinate to navigate to before taking screenshot.
+        z_coord (int, optional): Z coordinate to navigate to before taking screenshot.
         
     Returns:
         str: Path to the saved screenshot
@@ -43,9 +45,37 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
         # Go to the URL
         page.goto(url)
         
-        # Wait for the map to load
-        print(f"Waiting {wait_time} seconds for map to fully load...")
+        # Wait for the map to initially load
+        print(f"Waiting {wait_time} seconds for map to initially load...")
         time.sleep(wait_time)
+        
+        # If coordinates are provided, navigate to them
+        if x_coord is not None and z_coord is not None:
+            print(f"Navigating to coordinates X: {x_coord}, Z: {z_coord}...")
+            
+            # Wait for the coordinate input elements to be available
+            page.wait_for_selector('div.position-input.pos-input input[type="number"]')
+            
+            # Get the input elements (first is X, second is Z)
+            input_elements = page.query_selector_all('div.position-input.pos-input input[type="number"]')
+            if len(input_elements) >= 2:
+                x_input = input_elements[0]
+                z_input = input_elements[1]
+                
+                # Clear existing values and enter new coordinates
+                x_input.fill("")  # Clear first
+                x_input.type(str(x_coord))
+                z_input.fill("")  # Clear first
+                z_input.type(str(z_coord))
+                
+                # Press Enter to trigger the coordinate change
+                z_input.press("Enter")
+                
+                # Wait additional time for the map to update to the new position
+                print(f"Waiting for map to update to the new position...")
+                time.sleep(5)  # Additional wait time after entering coordinates
+            else:
+                print("Warning: Could not find coordinate input fields. Taking screenshot without navigating.")
         
         # Take screenshot
         print("Taking screenshot...")
@@ -84,6 +114,16 @@ def main():
         default=1080, 
         help="Height of the viewport. Default is 1080."
     )
+    parser.add_argument(
+        "-x", "--x-coord",
+        type=int,
+        help="X coordinate to navigate to before taking screenshot."
+    )
+    parser.add_argument(
+        "-z", "--z-coord",
+        type=int,
+        help="Z coordinate to navigate to before taking screenshot."
+    )
     
     args = parser.parse_args()
     
@@ -92,7 +132,9 @@ def main():
         args.output, 
         args.wait, 
         args.width, 
-        args.height
+        args.height,
+        args.x_coord,
+        args.z_coord
     )
 
 if __name__ == "__main__":
