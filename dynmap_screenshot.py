@@ -158,8 +158,85 @@ def posterize_image(image_path, output_path=None, colors=16):
     print(f"Image posterized and saved to: {output_path}")
     return output_path
 
+def analyze_color_pixel_counts(current, previous, percent_threshold=10):
+    """
+    Analyze changes in pixel counts for each land claim color between two images.
+    
+    Args:
+        current: Numpy array of current image
+        previous: Numpy array of previous image
+        percent_threshold: Percentage decrease threshold to consider significant (default: 10)
+        
+    Returns:
+        Dictionary with information about disappeared claims
+    """
+    # Define land claim colors with common variations
+    land_claim_colors = {
+        "red": [(163, 9, 7), (162, 8, 6), (164, 10, 8)],
+        "green": [(10, 166, 40), (9, 165, 39), (11, 167, 41)],
+        "purple": [(164, 5, 165), (163, 4, 164), (165, 6, 166)],
+        "blue": [(7, 9, 164), (6, 8, 163), (8, 10, 165)],
+        "orange": [(244, 166, 6), (243, 165, 5), (245, 167, 7)],
+        "yellow": [(243, 242, 86), (242, 241, 85), (244, 243, 87)],
+        "white": [(243, 244, 243), (242, 243, 242), (244, 245, 244)],
+        "coral": [(240, 87, 85), (239, 86, 84), (241, 88, 86)]
+    }
+    
+    # Get pixel counts for each color group in both images
+    current_counts = {}
+    previous_counts = {}
+    
+    for color_name, variations in land_claim_colors.items():
+        # Initialize masks
+        current_mask = np.zeros((current.shape[0], current.shape[1]), dtype=bool)
+        previous_mask = np.zeros((previous.shape[0], previous.shape[1]), dtype=bool)
+        
+        # Add each variation to the mask
+        for color_rgb in variations:
+            r, g, b = color_rgb
+            
+            # Exact matching for current image
+            current_color_mask = (
+                (current[:,:,0] == r) & 
+                (current[:,:,1] == g) & 
+                (current[:,:,2] == b)
+            )
+            current_mask = current_mask | current_color_mask
+            
+            # Exact matching for previous image
+            previous_color_mask = (
+                (previous[:,:,0] == r) & 
+                (previous[:,:,1] == g) & 
+                (previous[:,:,2] == b)
+            )
+            previous_mask = previous_mask | previous_color_mask
+        
+        # Count pixels for this color
+        current_counts[color_name] = np.sum(current_mask)
+        previous_counts[color_name] = np.sum(previous_mask)
+    
+    # Detect significant decreases in pixel counts
+    disappeared_claims = {}
+    total_disappeared_pixels = 0
+    
+    for color_name in land_claim_colors:
+        if previous_counts[color_name] > 0:  # Avoid division by zero
+            decrease = previous_counts[color_name] - current_counts[color_name]
+            percent_decrease = (decrease / previous_counts[color_name]) * 100
+            
+            if decrease > 0 and percent_decrease > percent_threshold:
+                disappeared_claims[color_name] = {
+                    'previous_count': int(previous_counts[color_name]),
+                    'current_count': int(current_counts[color_name]),
+                    'decrease': int(decrease),
+                    'percent_decrease': float(percent_decrease)
+                }
+                total_disappeared_pixels += int(decrease)
+    
+    return disappeared_claims, total_disappeared_pixels
+
 def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20, 
-                       focus_on_claims=False, color_tolerance=30):
+                       focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=10):
     """
     Compare two consecutive map images to detect disappeared land claims.
     
@@ -171,13 +248,15 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
         min_area: Minimum area in pixels for a change to be considered significant (default: 20)
         focus_on_claims: Whether to focus only on land claim colors (default: False)
         color_tolerance: How closely a pixel needs to match a land claim color (default: 30)
+        use_pixel_count: Whether to use pixel count analysis (default: False)
+        percent_threshold: Percentage decrease threshold for pixel count analysis (default: 10)
         
     Returns:
         Dictionary with results containing change information
     """
     print(f"Comparing with previous image: {previous_image}")
     
-    # Define land claim colors (RGB values)
+    # Define land claim colors (RGB values) for mask-based detection
     land_claim_colors = [
         (163, 9, 7),     # Red
         (10, 166, 40),   # Green
@@ -214,8 +293,32 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
             'error': 'Images have different dimensions'
         }
     
-    # Determine if we should focus only on land claim colors
-    if focus_on_claims:
+    # Determine which detection method to use
+    if use_pixel_count:
+        # Use color pixel count analysis
+        print(f"Using color pixel count analysis with percent threshold: {percent_threshold}%")
+        disappeared_claims, total_disappeared_pixels = analyze_color_pixel_counts(
+            current, previous, percent_threshold
+        )
+        
+        # Create a simple visualization of disappeared claims
+        changes = []
+        if total_disappeared_pixels > 0:
+            print(f"Found {total_disappeared_pixels} total disappeared claim pixels across {len(disappeared_claims)} colors")
+            for color_name, stats in disappeared_claims.items():
+                print(f"  - {color_name}: {stats['decrease']} pixels ({stats['percent_decrease']:.1f}% decrease)")
+            
+            # Create a simple region for visualization
+            region = {
+                'x_min': 0, 'y_min': 0,
+                'x_max': current.shape[1] - 1, 'y_max': current.shape[0] - 1,
+                'center_x': current.shape[1] // 2, 'center_y': current.shape[0] // 2,
+                'area': total_disappeared_pixels,
+                'colors': list(disappeared_claims.keys())
+            }
+            changes.append(region)
+        
+    elif focus_on_claims:
         print(f"Focusing detection on land claim colors with tolerance: {color_tolerance}")
         
         # Create masks for land claim colors
@@ -245,29 +348,43 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
         # Find disappeared land claims (in previous but not in current)
         change_mask = previous_mask & ~current_mask
         print(f"Found {np.sum(change_mask)} pixels of potential disappeared land claims")
+        
+        # Find connected regions and extract changes
+        labeled, num_features = ndimage.label(change_mask)
+        changes = []
+        for label in range(1, num_features+1):
+            y, x = np.where(labeled == label)
+            if len(y) > min_area:  # Minimum size threshold
+                region = {
+                    'x_min': int(np.min(x)), 'y_min': int(np.min(y)),
+                    'x_max': int(np.max(x)), 'y_max': int(np.max(y)),
+                    'center_x': int((np.min(x) + np.max(x)) / 2),
+                    'center_y': int((np.min(y) + np.max(y)) / 2),
+                    'area': int(len(y))
+                }
+                changes.append(region)
     else:
         # Use the original difference-based approach
         print(f"Using general pixel difference detection with threshold: {threshold}")
         diff = np.abs(current.astype(int) - previous.astype(int))
         diff_sum = diff.sum(axis=2)  # Sum across RGB channels
         change_mask = diff_sum > threshold
+        
+        # Find connected regions and extract changes
+        labeled, num_features = ndimage.label(change_mask)
+        changes = []
+        for label in range(1, num_features+1):
+            y, x = np.where(labeled == label)
+            if len(y) > min_area:  # Minimum size threshold
+                region = {
+                    'x_min': int(np.min(x)), 'y_min': int(np.min(y)),
+                    'x_max': int(np.max(x)), 'y_max': int(np.max(y)),
+                    'center_x': int((np.min(x) + np.max(x)) / 2),
+                    'center_y': int((np.min(y) + np.max(y)) / 2),
+                    'area': int(len(y))
+                }
+                changes.append(region)
     
-    # Find connected regions (potential disappeared claims)
-    labeled, num_features = ndimage.label(change_mask)
-    
-    # Extract and filter significant changes
-    changes = []
-    for label in range(1, num_features+1):
-        y, x = np.where(labeled == label)
-        if len(y) > min_area:  # Minimum size threshold
-            region = {
-                'x_min': int(np.min(x)), 'y_min': int(np.min(y)),
-                'x_max': int(np.max(x)), 'y_max': int(np.max(y)),
-                'center_x': int((np.min(x) + np.max(x)) / 2),
-                'center_y': int((np.min(y) + np.max(y)) / 2),
-                'area': int(len(y))
-            }
-            changes.append(region)
     
     # Save visualization if requested
     if output_path and changes:
@@ -450,6 +567,17 @@ def main():
         default=30,
         help="How closely a pixel needs to match a land claim color (default: 30)"
     )
+    parser.add_argument(
+        "--use-pixel-count",
+        action="store_true",
+        help="Use color pixel count analysis to detect disappeared land claims"
+    )
+    parser.add_argument(
+        "--percent-threshold",
+        type=float,
+        default=10.0,
+        help="Percentage decrease threshold for pixel count analysis (default: 10.0)"
+    )
     
     args = parser.parse_args()
     
@@ -511,7 +639,9 @@ def main():
                             threshold=args.threshold,
                             min_area=args.min_area,
                             focus_on_claims=args.focus_on_claims,
-                            color_tolerance=args.color_tolerance
+                            color_tolerance=args.color_tolerance,
+                            use_pixel_count=args.use_pixel_count,
+                            percent_threshold=args.percent_threshold
                         )
                         
                         # Save results to JSON if requested
