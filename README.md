@@ -1,6 +1,6 @@
-# Dynmap Screenshot Bot
+# Dynmap Land Claims Detector
 
-A Python script that captures screenshots of Minecraft dynmap webpages using Playwright.
+A Python script that captures screenshots of Minecraft dynmap webpages and monitors for disappeared land claims.
 
 ## Installation
 
@@ -29,6 +29,7 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 
 ### Command-line Options
 
+#### Screenshot Capture Options
 - `-o, --output`: Path to save the screenshot (optional)
 - `-w, --wait`: Time in seconds to wait for the map to load (default: 10)
 - `--width`: Width of the viewport (default: 1920)
@@ -37,6 +38,19 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `-z, --z-coord`: Z coordinate to navigate to before taking screenshot (optional)
 - `--zoom-out`: Number of times to click the zoom-out button (default: 2)
 - `--crop`: Crop the image to the content inside the red border
+
+#### Sequential Numbering
+- `--seq`: Use sequential numbering for output filenames (dynmap_001.png, dynmap_002.png, etc.)
+
+#### Image Processing 
+- `--posterize`: Reduce image to specified number of colors (e.g., 16) for better land claim detection
+
+#### Land Claim Change Detection
+- `--compare`: Compare with previous image to detect land claim changes
+- `--changes-output`: Path to save visualization of detected changes
+- `--json-output`: Path to save change detection results as JSON
+- `--min-area`: Minimum area in pixels for a change to be considered significant (default: 20)
+- `--threshold`: Threshold for pixel difference to be considered significant (default: 50)
 
 ### Examples
 
@@ -76,20 +90,68 @@ Disable zooming out (take screenshot at default zoom level):
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --zoom-out 0
 ```
 
-Crop the screenshot to the map area inside the red border:
+#### Basic Screenshot with Cropping
 
 ```bash
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop
 ```
 
-Complete example with all features:
+#### Sequential Numbering for Automation
 
 ```bash
-python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --zoom-out 2 --width 2048 --height 1200 -o map.png --crop
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --seq
 ```
+
+#### Image Posterization for Better Land Claim Analysis
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq
+```
+
+#### Land Claim Change Detection
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare
+```
+
+#### Complete Example with Change Visualization and JSON Output
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --zoom-out 2 --width 2048 --height 1200 --crop --posterize 16 --seq --compare --changes-output changes.png --json-output changes.json
+```
+
+## Exit Codes
+
+The script uses exit codes to indicate the result of the operation:
+
+- `0`: Successful completion (no changes detected or comparison not enabled)
+- `1`: Land claim changes detected (when using `--compare`)
+
+This allows you to use the script in automated workflows or with a Discord bot that can notify when changes are detected.
+
+## Tips for Automated Monitoring
+
+1. **Set up a scheduled task** to run the script every few minutes:
+   ```bash
+   # Example cron job (runs every 5 minutes)
+   */5 * * * * cd /path/to/dynmap_land_claims_extractor && python dynmap_screenshot.py <ARGS> >> dynmap_monitor.log 2>&1
+   ```
+
+2. **Use sequential numbering** (`--seq`) to maintain a history of screenshots.
+
+3. **Optimize image processing**:
+   - Adjust the posterization level (`--posterize`) based on your map's colors
+   - Tune the detection threshold (`--threshold`) and minimum area (`--min-area`) to reduce false positives
+
+4. **Discord bot integration**:
+   - Use the JSON output (`--json-output`) to get structured data about changes
+   - Send the visualization image (`--changes-output`) to Discord when changes are detected
+   - Check the exit code to determine if changes were found
 
 ## Troubleshooting
 
 - If the map doesn't load properly, try increasing the wait time using the `-w` option
 - For high-resolution displays, you might want to increase the viewport size with `--width` and `--height`
 - If you encounter any browser-related issues, make sure you've installed the Playwright browsers with `python -m playwright install chromium`
+- If you're getting false positives in change detection, try increasing the `--threshold` and `--min-area` values
+- If land claims aren't being detected properly, try adjusting the `--posterize` value to better distinguish claim colors

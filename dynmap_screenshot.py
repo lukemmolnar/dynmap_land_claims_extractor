@@ -9,9 +9,13 @@ from playwright.sync_api import sync_playwright
 import time
 import os
 import argparse
+import glob
+import re
+import json
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
+from scipy import ndimage
 
 def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, 
                    x_coord=None, z_coord=None, zoom_out_clicks=1):
@@ -105,6 +109,150 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
     print(f"Screenshot saved to: {output_path}")
     return output_path
 
+def get_next_image_number():
+    """
+    Get the next sequential image number by examining existing files.
+    
+    Returns:
+        int: The next available image number
+    """
+    # Check for existing numbered images and find highest
+    files = glob.glob("dynmap_*.png")
+    if files:
+        numbers = []
+        for f in files:
+            match = re.search(r'dynmap_(\d+)\.png', f)
+            if match:
+                numbers.append(int(match.group(1)))
+        next_num = max(numbers) + 1 if numbers else 1
+    else:
+        next_num = 1
+    
+    print(f"Using image number: {next_num}")
+    return next_num
+
+def posterize_image(image_path, output_path=None, colors=16):
+    """
+    Reduce the image to a specified number of colors to make land claims more distinct.
+    
+    Args:
+        image_path: Path to the input image
+        output_path: Path for the posterized output image (if None, overwrites original)
+        colors: Number of colors to reduce the image to (default: 16)
+        
+    Returns:
+        Path to the posterized image
+    """
+    if output_path is None:
+        output_path = image_path
+        
+    print(f"Posterizing image to {colors} colors...")
+    
+    # Open the image
+    img = Image.open(image_path)
+    
+    # Convert to P mode with limited palette
+    posterized = img.convert('P', palette=Image.ADAPTIVE, colors=colors)
+    posterized.save(output_path)
+    
+    print(f"Image posterized and saved to: {output_path}")
+    return output_path
+
+def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20):
+    """
+    Compare two consecutive map images to detect disappeared land claims.
+    
+    Args:
+        current_image: Path to the current map image
+        previous_image: Path to the previous map image
+        output_path: Path to save visualization of changes (if None, no visualization is saved)
+        threshold: Threshold for pixel difference to be considered significant (default: 50)
+        min_area: Minimum area in pixels for a change to be considered significant (default: 20)
+        
+    Returns:
+        Dictionary with results containing change information
+    """
+    print(f"Comparing with previous image: {previous_image}")
+    
+    # Load images and ensure they're in RGB mode
+    current_img = Image.open(current_image)
+    previous_img = Image.open(previous_image)
+    
+    # Convert to RGB mode if they're not already
+    if current_img.mode != 'RGB':
+        print(f"Converting current image from {current_img.mode} to RGB mode")
+        current_img = current_img.convert('RGB')
+    if previous_img.mode != 'RGB':
+        print(f"Converting previous image from {previous_img.mode} to RGB mode")
+        previous_img = previous_img.convert('RGB')
+    
+    # Convert to numpy arrays
+    current = np.array(current_img)
+    previous = np.array(previous_img)
+    
+    # Make sure images are the same size
+    if current.shape != previous.shape:
+        print("Error: Images have different dimensions, cannot compare")
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'changes_detected': False,
+            'error': 'Images have different dimensions'
+        }
+    
+    # Create difference map
+    diff = np.abs(current.astype(int) - previous.astype(int))
+    diff_sum = diff.sum(axis=2)  # Sum across RGB channels
+    change_mask = diff_sum > threshold
+    
+    # Find connected regions (potential disappeared claims)
+    labeled, num_features = ndimage.label(change_mask)
+    
+    # Extract and filter significant changes
+    changes = []
+    for label in range(1, num_features+1):
+        y, x = np.where(labeled == label)
+        if len(y) > min_area:  # Minimum size threshold
+            region = {
+                'x_min': int(np.min(x)), 'y_min': int(np.min(y)),
+                'x_max': int(np.max(x)), 'y_max': int(np.max(y)),
+                'center_x': int((np.min(x) + np.max(x)) / 2),
+                'center_y': int((np.min(y) + np.max(y)) / 2),
+                'area': int(len(y))
+            }
+            changes.append(region)
+    
+    # Save visualization if requested
+    if output_path and changes:
+        vis_img = Image.open(current_image).copy()
+        draw = ImageDraw.Draw(vis_img)
+        for r in changes:
+            draw.rectangle([r['x_min'], r['y_min'], r['x_max'], r['y_max']], 
+                          outline="red", width=2)
+        vis_img.save(output_path)
+        print(f"Change visualization saved to: {output_path}")
+    
+    # Generate result dictionary
+    result = {
+        'timestamp': datetime.now().isoformat(),
+        'changes_detected': len(changes) > 0,
+        'num_changes': len(changes),
+        'changes': changes,
+        'current_image': current_image,
+        'previous_image': previous_image,
+        'visualization': output_path if (output_path and changes) else None
+    }
+    
+    # Print summary
+    if changes:
+        print(f"Found {len(changes)} areas with disappeared land claims!")
+        for i, region in enumerate(changes):
+            print(f"Region {i+1}: Center at approx. ({region['center_x']}, {region['center_y']}), "
+                  f"Area: {region['area']} pixels")
+    else:
+        print("No significant land claim changes detected")
+    
+    return result
+
 def crop_to_red_border(image_path, output_path=None):
     """
     Crops an image to the content inside a red border.
@@ -166,7 +314,7 @@ def main():
     parser.add_argument("url", help="The URL of the dynmap to capture")
     parser.add_argument(
         "-o", "--output", 
-        help="Path to save the screenshot. If not provided, a timestamped filename is used."
+        help="Path to save the screenshot. If not provided, a sequentially numbered filename is used."
     )
     parser.add_argument(
         "-w", "--wait", 
@@ -207,13 +355,61 @@ def main():
         action="store_true",
         help="Crop the image to the content inside the red border"
     )
+    parser.add_argument(
+        "--posterize",
+        type=int,
+        default=0,
+        help="Reduce the image to specified number of colors (0 to disable)"
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Compare with previous image to detect land claim changes"
+    )
+    parser.add_argument(
+        "--changes-output",
+        help="Path to save visualization of detected changes (requires --compare)"
+    )
+    parser.add_argument(
+        "--json-output",
+        help="Path to save change detection results as JSON (requires --compare)"
+    )
+    parser.add_argument(
+        "--seq",
+        action="store_true",
+        help="Use sequential numbering for output filenames (dynmap_001.png, dynmap_002.png, etc.)"
+    )
+    parser.add_argument(
+        "--min-area",
+        type=int,
+        default=20,
+        help="Minimum area in pixels for a change to be considered significant (default: 20)"
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=50,
+        help="Threshold for pixel difference to be considered significant (default: 50)"
+    )
     
     args = parser.parse_args()
+    
+    # Determine output path
+    output_path = args.output
+    if output_path is None:
+        if args.seq:
+            # Use sequential numbering
+            num = get_next_image_number()
+            output_path = f"dynmap_{num:03d}.png"
+        else:
+            # Use timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"dynmap_screenshot_{timestamp}.png"
     
     # Capture the screenshot
     screenshot_path = capture_dynmap(
         args.url, 
-        args.output, 
+        output_path, 
         args.wait, 
         args.width, 
         args.height,
@@ -222,9 +418,56 @@ def main():
         args.zoom_out
     )
     
-    # If crop option is enabled, crop the image to the red border
+    # Process the screenshot based on command line options
     if args.crop and screenshot_path:
-        crop_to_red_border(screenshot_path)
+        screenshot_path = crop_to_red_border(screenshot_path)
+    
+    # Posterize the image if requested
+    if args.posterize > 0 and screenshot_path:
+        screenshot_path = posterize_image(screenshot_path, colors=args.posterize)
+    
+    # Compare with previous image if requested
+    if args.compare and screenshot_path:
+        # Get previous image path based on current image name
+        if args.seq:
+            # Extract current image number
+            match = re.search(r'dynmap_(\d+)\.png', screenshot_path)
+            if match:
+                current_num = int(match.group(1))
+                if current_num > 1:
+                    prev_num = current_num - 1
+                    prev_path = f"dynmap_{prev_num:03d}.png"
+                    
+                    if os.path.exists(prev_path):
+                        # Generate visualization path if not specified
+                        changes_output = args.changes_output
+                        if changes_output is None and current_num > 1:
+                            changes_output = f"changes_{current_num:03d}.png"
+                        
+                        # Compare and detect changes
+                        results = detect_claim_changes(
+                            screenshot_path, 
+                            prev_path, 
+                            changes_output,
+                            threshold=args.threshold,
+                            min_area=args.min_area
+                        )
+                        
+                        # Save results to JSON if requested
+                        if args.json_output and results['changes_detected']:
+                            with open(args.json_output, 'w') as f:
+                                json.dump(results, f, indent=2)
+                            print(f"Results saved to: {args.json_output}")
+                        
+                        # Set exit code based on whether changes were detected
+                        if results['changes_detected']:
+                            print("Changes detected! Use exit code 1")
+                            exit(1)  # Changes detected
+                    else:
+                        print(f"No previous image found: {prev_path}")
+    
+    print("Finished processing")
+    return 0  # No changes detected or comparison not enabled
 
 if __name__ == "__main__":
     main()
