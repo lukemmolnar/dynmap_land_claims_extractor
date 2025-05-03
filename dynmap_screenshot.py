@@ -158,6 +158,90 @@ def posterize_image(image_path, output_path=None, colors=16):
     print(f"Image posterized and saved to: {output_path}")
     return output_path
 
+def find_disappeared_color_regions(current, previous, color_name):
+    """
+    Find regions where a specific color disappeared between images.
+    
+    Args:
+        current: Numpy array of current image
+        previous: Numpy array of previous image
+        color_name: Name of the color to analyze
+        
+    Returns:
+        Dictionary with information about disappeared regions
+    """
+    # Define land claim colors with common variations
+    land_claim_colors = {
+        "red": [(163, 9, 7), (162, 8, 6), (164, 10, 8)],
+        "green": [(10, 166, 40), (9, 165, 39), (11, 167, 41)],
+        "purple": [(164, 5, 165), (163, 4, 164), (165, 6, 166)],
+        "blue": [(7, 9, 164), (6, 8, 163), (8, 10, 165)],
+        "orange": [(244, 166, 6), (243, 165, 5), (245, 167, 7)],
+        "yellow": [(243, 242, 86), (242, 241, 85), (244, 243, 87)],
+        "white": [(243, 244, 243), (242, 243, 242), (244, 245, 244)],
+        "coral": [(240, 87, 85), (239, 86, 84), (241, 88, 86)]
+    }
+    
+    # Make sure color_name is valid
+    if color_name not in land_claim_colors:
+        print(f"Warning: Unknown color name: {color_name}")
+        return None
+    
+    # Get color variations for this color
+    color_variations = land_claim_colors[color_name]
+    
+    # Create masks for this color in both images
+    current_mask = np.zeros((current.shape[0], current.shape[1]), dtype=bool)
+    previous_mask = np.zeros((previous.shape[0], previous.shape[1]), dtype=bool)
+    
+    # Add each variation to the mask
+    for color_rgb in color_variations:
+        r, g, b = color_rgb
+        
+        # Exact matching for current image
+        current_color_mask = (
+            (current[:,:,0] == r) & 
+            (current[:,:,1] == g) & 
+            (current[:,:,2] == b)
+        )
+        current_mask = current_mask | current_color_mask
+        
+        # Exact matching for previous image
+        previous_color_mask = (
+            (previous[:,:,0] == r) & 
+            (previous[:,:,1] == g) & 
+            (previous[:,:,2] == b)
+        )
+        previous_mask = previous_mask | previous_color_mask
+    
+    # Find areas where color existed before but not now
+    disappeared_mask = previous_mask & ~current_mask
+    
+    # Find connected regions
+    labeled, num_features = ndimage.label(disappeared_mask)
+    
+    regions = []
+    for label in range(1, num_features+1):
+        y, x = np.where(labeled == label)
+        if len(y) > 10:  # Minimum size threshold
+            # Calculate center point
+            center_x = int(np.mean(x))
+            center_y = int(np.mean(y))
+            
+            region = {
+                'x': center_x,
+                'y': center_y,
+                'area': len(y),
+                'color': color_name,
+                'x_min': int(np.min(x)),
+                'y_min': int(np.min(y)),
+                'x_max': int(np.max(x)),
+                'y_max': int(np.max(y))
+            }
+            regions.append(region)
+    
+    return regions
+
 def analyze_color_pixel_counts(current, previous, percent_threshold=10):
     """
     Analyze changes in pixel counts for each land claim color between two images.
@@ -386,13 +470,79 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                 changes.append(region)
     
     
-    # Save visualization if requested
-    if output_path and changes:
+    # Save visualization if changes detected
+    if changes:
+        # Create claim_disappearances folder if it doesn't exist
+        os.makedirs("claim_disappearances", exist_ok=True)
+        
+        # Generate a timestamp for the filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # If output_path not specified, create one in the claim_disappearances folder
+        if output_path is None:
+            output_path = f"claim_disappearances/disappearance_{timestamp}.png"
+        elif not output_path.startswith("claim_disappearances/"):
+            # Make sure it goes in the claim_disappearances folder
+            basename = os.path.basename(output_path)
+            output_path = f"claim_disappearances/{basename}"
+        
+        # Create the visualization
         vis_img = Image.open(current_image).copy()
         draw = ImageDraw.Draw(vis_img)
-        for r in changes:
-            draw.rectangle([r['x_min'], r['y_min'], r['x_max'], r['y_max']], 
-                          outline="red", width=2)
+        
+        # For pixel count analysis, find the actual regions where colors disappeared
+        if use_pixel_count and total_disappeared_pixels > 0:
+            all_regions = []
+            for color_name in disappeared_claims.keys():
+                regions = find_disappeared_color_regions(current, previous, color_name)
+                if regions:
+                    all_regions.extend(regions)
+            
+            # Draw bright red circles for each region
+            font = None
+            try:
+                # Try to load a font if PIL has ImageFont
+                from PIL import ImageFont
+                try:
+                    font = ImageFont.truetype("arial.ttf", 12)
+                except:
+                    # Fallback to default font
+                    font = ImageFont.load_default()
+            except:
+                pass
+            
+            # Draw circles and labels
+            for region in all_regions:
+                # Draw large, bright red circle
+                circle_radius = 20
+                draw.ellipse(
+                    [(region['x']-circle_radius, region['y']-circle_radius), 
+                     (region['x']+circle_radius, region['y']+circle_radius)], 
+                    outline=(255, 0, 0), width=3
+                )
+                
+                # Add text annotation with coordinates and color
+                label = f"{region['color']}: ({region['x']}, {region['y']})"
+                if font:
+                    draw.text(
+                        (region['x']+circle_radius+5, region['y']), 
+                        label,
+                        fill=(255, 0, 0),
+                        font=font
+                    )
+                else:
+                    draw.text(
+                        (region['x']+circle_radius+5, region['y']), 
+                        label,
+                        fill=(255, 0, 0)
+                    )
+        else:
+            # For other detection methods, just draw rectangles
+            for r in changes:
+                draw.rectangle([r['x_min'], r['y_min'], r['x_max'], r['y_max']], 
+                              outline="red", width=2)
+        
+        # Save the visualization
         vis_img.save(output_path)
         print(f"Change visualization saved to: {output_path}")
     
