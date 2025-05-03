@@ -36,6 +36,7 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `-x, --x-coord`: X coordinate to navigate to before taking screenshot (optional)
 - `-z, --z-coord`: Z coordinate to navigate to before taking screenshot (optional)
 - `--zoom-out`: Number of times to click the zoom-out button (default: 2)
+- `--crop`: Crop the image to the content inside the red border
 
 ### Examples
 
@@ -73,6 +74,18 @@ Disable zooming out (take screenshot at default zoom level):
 
 ```bash
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --zoom-out 0
+```
+
+Crop the screenshot to the map area inside the red border:
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop
+```
+
+Complete example with all features:
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --zoom-out 2 --width 2048 --height 1200 -o map.png --crop
 ```
 
 ## Troubleshooting

@@ -10,6 +10,8 @@ import time
 import os
 import argparse
 from datetime import datetime
+from PIL import Image
+import numpy as np
 
 def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, 
                    x_coord=None, z_coord=None, zoom_out_clicks=1):
@@ -103,6 +105,60 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
     print(f"Screenshot saved to: {output_path}")
     return output_path
 
+def crop_to_red_border(image_path, output_path=None):
+    """
+    Crops an image to the content inside a red border.
+    
+    Args:
+        image_path: Path to the input image
+        output_path: Path for the cropped output image (if None, overwrites original)
+        
+    Returns:
+        Path to the cropped image
+    """
+    if output_path is None:
+        output_path = image_path
+        
+    print(f"Analyzing image for red border...")
+    
+    # Open the image
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    
+    # Define red color threshold (with some tolerance)
+    # Red channel high, green and blue channels low
+    red_mask = (img_array[:,:,0] > 180) & (img_array[:,:,1] < 80) & (img_array[:,:,2] < 80)
+    
+    # Find coordinates where red border exists
+    y_indices, x_indices = np.where(red_mask)
+    
+    if len(y_indices) > 0 and len(x_indices) > 0:
+        # Find the bounding box of the red border
+        top = np.min(y_indices)
+        bottom = np.max(y_indices)
+        left = np.min(x_indices)
+        right = np.max(x_indices)
+        
+        # Find inner content (slightly inside the red border)
+        margin = 5
+        inner_top = top + margin
+        inner_bottom = bottom - margin
+        inner_left = left + margin
+        inner_right = right - margin
+        
+        # Make sure we have a valid box
+        if inner_bottom > inner_top and inner_right > inner_left:
+            # Crop the image to the inner content
+            cropped_img = img.crop((inner_left, inner_top, inner_right, inner_bottom))
+            cropped_img.save(output_path)
+            print(f"Image cropped to {inner_right-inner_left}x{inner_bottom-inner_top} pixels")
+            print(f"Cropped image saved to: {output_path}")
+            return output_path
+    
+    print("Could not detect red border clearly. Saving original image.")
+    img.save(output_path)
+    return output_path
+
 def main():
     """Main function to parse command line arguments and capture the screenshot."""
     parser = argparse.ArgumentParser(description="Capture screenshots of Minecraft dynmap webpages")
@@ -146,10 +202,16 @@ def main():
         default=2,
         help="Number of times to click the zoom-out button (default: 2)"
     )
+    parser.add_argument(
+        "--crop",
+        action="store_true",
+        help="Crop the image to the content inside the red border"
+    )
     
     args = parser.parse_args()
     
-    capture_dynmap(
+    # Capture the screenshot
+    screenshot_path = capture_dynmap(
         args.url, 
         args.output, 
         args.wait, 
@@ -159,6 +221,10 @@ def main():
         args.z_coord,
         args.zoom_out
     )
+    
+    # If crop option is enabled, crop the image to the red border
+    if args.crop and screenshot_path:
+        crop_to_red_border(screenshot_path)
 
 if __name__ == "__main__":
     main()
