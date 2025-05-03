@@ -177,9 +177,15 @@ This mode will:
 - Save mask images to the `debug` folder showing which pixels match each color
 - Show pixel counts for all colors and their differences between images
 
-#### Pixel-Perfect Visualization of Disappeared Claims
+#### Hybrid Visualization of Disappeared Claims
 
-All detected claim disappearances are now automatically saved to the `claim_disappearances` folder with **pixel-perfect accuracy**. Instead of approximate circles, the script now highlights the exact pixels that disappeared in bright red, showing the precise shape and location of the claim.
+All detected claim disappearances are now saved to the `claim_disappearances` folder with a **hybrid visualization approach**:
+
+1. **Pixel-perfect highlighting**: Exact pixels that disappeared are colored bright red
+2. **Circle overlays**: Red circles surround each region of disappeared pixels for easy spotting
+3. **Center crosshairs**: Small crosshairs mark the exact center of each region
+
+This dual approach provides both precision (you can see exactly which pixels disappeared) and visibility (the circles make changes easy to spot at a glance).
 
 ```bash
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count

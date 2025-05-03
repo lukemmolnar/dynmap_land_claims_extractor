@@ -655,7 +655,7 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                     all_regions.extend(regions)
             
             # Get disappeared pixels for each color and highlight them in bright red
-            print("Creating pixel-perfect visualization of disappeared land claims...")
+            print("Creating hybrid visualization of disappeared land claims (pixels + circles)...")
             
             # Convert visualization image to RGB mode if needed
             if vis_img.mode != 'RGB':
@@ -673,6 +673,29 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                 for i in range(len(y_indices)):
                     y, x = y_indices[i], x_indices[i]
                     vis_img.putpixel((x, y), (255, 0, 0))  # Bright red
+            
+            # Add circles around each region for better visibility
+            print("Adding highlight circles around disappeared regions...")
+            if all_regions:
+                for region in all_regions:
+                    # Calculate appropriate circle size based on region size
+                    # Scale with region area but with minimum and maximum sizes
+                    area_factor = region['area'] ** 0.5 * 0.7  # Square root of area * scaling factor
+                    circle_radius = max(20, min(50, area_factor))
+                    
+                    # Draw circle centered on the region
+                    draw.ellipse(
+                        [(region['x']-circle_radius, region['y']-circle_radius), 
+                         (region['x']+circle_radius, region['y']+circle_radius)], 
+                        outline=(255, 0, 0), width=3
+                    )
+                    
+                    # Add small crosshair at center for precise positioning
+                    crosshair_size = 5
+                    draw.line([(region['x']-crosshair_size, region['y']), (region['x']+crosshair_size, region['y'])], 
+                             fill=(255, 0, 0), width=1)
+                    draw.line([(region['x'], region['y']-crosshair_size), (region['x'], region['y']+crosshair_size)], 
+                             fill=(255, 0, 0), width=1)
             
             # Add a legend to show which colors disappeared
             font = None
