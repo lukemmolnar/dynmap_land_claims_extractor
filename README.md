@@ -204,6 +204,24 @@ Using a custom configuration file:
 python dynmap_screenshot.py --all-maps --config-file my_maps.json --crop --posterize 16 --seq --compare --use-pixel-count
 ```
 
+#### Advanced Multi-Map Options
+
+Control map processing order:
+```bash
+python dynmap_screenshot.py --all-maps --map-order abex1,abex4,abex2,abex3 --crop --posterize 16 --seq --compare
+```
+
+Add retry logic for network issues:
+```bash
+python dynmap_screenshot.py --all-maps --max-retries 5 --continue-on-error --navigation-timeout 120 -w 15
+```
+
+This will:
+- Try each map up to 5 times if network errors occur
+- Skip maps that consistently fail after all retries
+- Use 120 seconds timeout for network connections
+- Wait 15 seconds after navigation for map loading
+
 #### Complete Example with Change Visualization and JSON Output
 
 ```bash

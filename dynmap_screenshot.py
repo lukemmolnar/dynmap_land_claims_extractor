@@ -1039,6 +1039,21 @@ def main():
         default=60,
         help="Playwright navigation timeout in seconds (default: 60)"
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Maximum number of retry attempts for a map that fails with network errors (default: 3)"
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Skip maps that fail after all retry attempts and continue with the rest"
+    )
+    parser.add_argument(
+        "--map-order",
+        help="Comma-separated list to control map processing order (e.g., 'abex1,abex4,abex2,abex3')"
+    )
     
     args = parser.parse_args()
     
@@ -1059,9 +1074,52 @@ def main():
         if args.all_maps:
             # Process all maps in the config
             print(f"Processing all maps in {args.config_file}...")
-            for map_id, config in map_config.items():
-                map_changes = process_map(map_id, config, args)
-                changes_detected = changes_detected or map_changes
+            
+            # Determine the map processing order
+            map_ids = list(map_config.keys())
+            if args.map_order:
+                # Use custom order from command-line argument
+                custom_order = args.map_order.split(',')
+                # Filter to include only valid map IDs and preserve order
+                ordered_maps = [map_id for map_id in custom_order if map_id in map_config]
+                # Add any remaining maps not specified in the custom order
+                ordered_maps.extend([map_id for map_id in map_ids if map_id not in ordered_maps])
+                map_ids = ordered_maps
+                print(f"Using custom map processing order: {', '.join(map_ids)}")
+            
+            # Process each map with retry logic
+            for map_id in map_ids:
+                config = map_config[map_id]
+                
+                # Initialize retry counter
+                retry_count = 0
+                success = False
+                
+                # Retry loop
+                while retry_count <= args.max_retries and not success:
+                    if retry_count > 0:
+                        print(f"Retry attempt {retry_count}/{args.max_retries} for map {map_id}...")
+                        # Add a delay between retries (increasing with each retry)
+                        retry_delay = retry_count * 5  # 5, 10, 15 seconds
+                        print(f"Waiting {retry_delay} seconds before retrying...")
+                        time.sleep(retry_delay)
+                    
+                    try:
+                        map_changes = process_map(map_id, config, args)
+                        changes_detected = changes_detected or map_changes
+                        success = True  # Mark as successful if no exception was raised
+                    except Exception as e:
+                        retry_count += 1
+                        print(f"Error processing map {map_id}: {e}")
+                        if retry_count <= args.max_retries:
+                            print(f"Will retry ({retry_count}/{args.max_retries})...")
+                        else:
+                            print(f"Maximum retries ({args.max_retries}) reached. Giving up on map {map_id}.")
+                            if not args.continue_on_error:
+                                print("Stopping due to error. Use --continue-on-error to skip failed maps.")
+                                raise
+                            else:
+                                print(f"Skipping map {map_id} and continuing with next map...")
         elif args.map:
             # Process just the specified map
             if args.map in map_config:
