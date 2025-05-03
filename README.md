@@ -147,6 +147,25 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 
 This mode will detect even the smallest changes in land claim colors (1 pixel or more), ideal for monitoring when claims have disappeared.
 
+#### Supported Land Claim Colors
+
+The script can detect the following land claim colors:
+
+- Red (163, 9, 7)
+- Green (10, 166, 40)
+- Purple (164, 5, 165)
+- Blue (7, 9, 164)
+- Orange (244, 166, 6)
+- Yellow (243, 242, 86)
+- White (243, 244, 243)
+- Coral (240, 87, 85)
+- Black (18, 17, 11)
+- Light Blue (85, 86, 245)
+- Teal (6, 165, 163)
+- Ice Blue (169, 234, 243)
+
+For each color, the script includes small variations to handle slight rendering differences.
+
 #### Debug Mode for Color Detection
 
 ```bash
