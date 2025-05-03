@@ -242,7 +242,7 @@ def find_disappeared_color_regions(current, previous, color_name):
     
     return regions
 
-def analyze_color_pixel_counts(current, previous, percent_threshold=10):
+def analyze_color_pixel_counts(current, previous, percent_threshold=10, debug=False):
     """
     Analyze changes in pixel counts for each land claim color between two images.
     
@@ -261,10 +261,19 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10):
         "purple": [(164, 5, 165), (163, 4, 164), (165, 6, 166)],
         "blue": [(7, 9, 164), (6, 8, 163), (8, 10, 165)],
         "orange": [(244, 166, 6), (243, 165, 5), (245, 167, 7)],
-        "yellow": [(243, 242, 86), (242, 241, 85), (244, 243, 87)],
+        "yellow": [(243, 242, 86), (242, 241, 85), (244, 243, 87), (240, 240, 80), (245, 245, 90)],
         "white": [(243, 244, 243), (242, 243, 242), (244, 245, 244)],
         "coral": [(240, 87, 85), (239, 86, 84), (241, 88, 86)]
     }
+    
+    if debug:
+        print("\n=== COLOR DETECTION DEBUG ===")
+        print("Looking for these colors in both images:")
+        for color_name, variations in land_claim_colors.items():
+            print(f"  {color_name}: {variations}")
+            
+        # Create a directory for debug images
+        os.makedirs("debug", exist_ok=True)
     
     # Get pixel counts for each color group in both images
     current_counts = {}
@@ -287,6 +296,12 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10):
             )
             current_mask = current_mask | current_color_mask
             
+            if debug:
+                # Count pixels matched by this exact color
+                exact_count = np.sum(current_color_mask)
+                if exact_count > 0:
+                    print(f"Current image: Found {exact_count} pixels of exact {color_name} color {color_rgb}")
+            
             # Exact matching for previous image
             previous_color_mask = (
                 (previous[:,:,0] == r) & 
@@ -294,10 +309,49 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10):
                 (previous[:,:,2] == b)
             )
             previous_mask = previous_mask | previous_color_mask
+            
+            if debug:
+                # Count pixels matched by this exact color
+                exact_count = np.sum(previous_color_mask)
+                if exact_count > 0:
+                    print(f"Previous image: Found {exact_count} pixels of exact {color_name} color {color_rgb}")
         
         # Count pixels for this color
         current_counts[color_name] = np.sum(current_mask)
         previous_counts[color_name] = np.sum(previous_mask)
+        
+        # Save mask images if debugging
+        if debug:
+            # Create mask images
+            current_mask_img = Image.fromarray((current_mask * 255).astype(np.uint8))
+            previous_mask_img = Image.fromarray((previous_mask * 255).astype(np.uint8))
+            
+            # Save mask images
+            current_mask_img.save(f"debug/current_{color_name}_mask.png")
+            previous_mask_img.save(f"debug/previous_{color_name}_mask.png")
+    
+    # Log all color counts if debugging
+    if debug:
+        print("\n=== COLOR COUNTS ===")
+        print("Previous image counts:")
+        for color_name in sorted(previous_counts, key=previous_counts.get, reverse=True):
+            if previous_counts[color_name] > 0:
+                print(f"  {color_name}: {previous_counts[color_name]} pixels")
+                
+        print("\nCurrent image counts:")
+        for color_name in sorted(current_counts, key=current_counts.get, reverse=True):
+            if current_counts[color_name] > 0:
+                print(f"  {color_name}: {current_counts[color_name]} pixels")
+                
+        print("\n=== COLOR DIFFERENCES ===")
+        for color_name in land_claim_colors:
+            if previous_counts[color_name] > 0 or current_counts[color_name] > 0:
+                difference = previous_counts[color_name] - current_counts[color_name]
+                if previous_counts[color_name] > 0:
+                    percent = (difference / previous_counts[color_name]) * 100
+                    print(f"  {color_name}: {difference} pixels ({percent:.1f}%)")
+                else:
+                    print(f"  {color_name}: {difference} pixels (new in current)")
     
     # Detect significant decreases in pixel counts
     disappeared_claims = {}
@@ -316,11 +370,15 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10):
                     'percent_decrease': float(percent_decrease)
                 }
                 total_disappeared_pixels += int(decrease)
+                
+                if debug:
+                    print(f"\nDetected significant decrease in {color_name}: {decrease} pixels ({percent_decrease:.1f}%)")
     
     return disappeared_claims, total_disappeared_pixels
 
 def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20, 
-                       focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=10):
+                       focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=10,
+                       debug=False):
     """
     Compare two consecutive map images to detect disappeared land claims.
     
@@ -382,7 +440,7 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
         # Use color pixel count analysis
         print(f"Using color pixel count analysis with percent threshold: {percent_threshold}%")
         disappeared_claims, total_disappeared_pixels = analyze_color_pixel_counts(
-            current, previous, percent_threshold
+            current, previous, percent_threshold, debug
         )
         
         # Create a simple visualization of disappeared claims
@@ -728,6 +786,11 @@ def main():
         default=10.0,
         help="Percentage decrease threshold for pixel count analysis (default: 10.0)"
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode to show detailed color detection information"
+    )
     
     args = parser.parse_args()
     
@@ -791,7 +854,8 @@ def main():
                             focus_on_claims=args.focus_on_claims,
                             color_tolerance=args.color_tolerance,
                             use_pixel_count=args.use_pixel_count,
-                            percent_threshold=args.percent_threshold
+                            percent_threshold=args.percent_threshold,
+                            debug=args.debug
                         )
                         
                         # Save results to JSON if requested

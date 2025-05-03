@@ -130,6 +130,17 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --percent-threshold 10
 ```
 
+#### Debug Mode for Color Detection
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --debug
+```
+
+This mode will:
+- Print detailed information about exactly which colors are found in both images
+- Save mask images to the `debug` folder showing which pixels match each color
+- Show pixel counts for all colors and their differences between images
+
 #### Visualizing Disappeared Claims with Bright Red Circles
 
 All detected claim disappearances are now automatically saved to the `claim_disappearances` folder with bright red circles marking the exact locations where claims disappeared. This makes it easy to identify where to find loot in-game.
