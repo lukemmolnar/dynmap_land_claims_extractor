@@ -158,9 +158,9 @@ def posterize_image(image_path, output_path=None, colors=16):
     print(f"Image posterized and saved to: {output_path}")
     return output_path
 
-def find_disappeared_color_regions(current, previous, color_name):
+def get_disappeared_mask(current, previous, color_name):
     """
-    Find regions where a specific color disappeared between images.
+    Create a mask of pixels where a specific color disappeared between images.
     
     Args:
         current: Numpy array of current image
@@ -168,7 +168,7 @@ def find_disappeared_color_regions(current, previous, color_name):
         color_name: Name of the color to analyze
         
     Returns:
-        Dictionary with information about disappeared regions
+        Boolean mask of disappeared pixels
     """
     # Define land claim colors with common variations
     land_claim_colors = {
@@ -216,6 +216,23 @@ def find_disappeared_color_regions(current, previous, color_name):
     
     # Find areas where color existed before but not now
     disappeared_mask = previous_mask & ~current_mask
+    
+    return disappeared_mask
+
+def find_disappeared_color_regions(current, previous, color_name):
+    """
+    Find regions where a specific color disappeared between images.
+    
+    Args:
+        current: Numpy array of current image
+        previous: Numpy array of previous image
+        color_name: Name of the color to analyze
+        
+    Returns:
+        Dictionary with information about disappeared regions
+    """
+    # Get the disappeared mask
+    disappeared_mask = get_disappeared_mask(current, previous, color_name)
     
     # Find connected regions
     labeled, num_features = ndimage.label(disappeared_mask)
@@ -570,44 +587,53 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                 if regions:
                     all_regions.extend(regions)
             
-            # Draw bright red circles for each region
+            # Get disappeared pixels for each color and highlight them in bright red
+            print("Creating pixel-perfect visualization of disappeared land claims...")
+            
+            # Convert visualization image to RGB mode if needed
+            if vis_img.mode != 'RGB':
+                vis_img = vis_img.convert('RGB')
+                
+            # For each color that disappeared, highlight its pixels in red
+            for color_name in disappeared_claims.keys():
+                print(f"  - Highlighting disappeared {color_name} pixels")
+                
+                # Get mask for this color
+                disappeared_mask = get_disappeared_mask(current, previous, color_name)
+                
+                # Color each disappeared pixel bright red
+                y_indices, x_indices = np.where(disappeared_mask)
+                for i in range(len(y_indices)):
+                    y, x = y_indices[i], x_indices[i]
+                    vis_img.putpixel((x, y), (255, 0, 0))  # Bright red
+            
+            # Add a legend to show which colors disappeared
             font = None
             try:
-                # Try to load a font if PIL has ImageFont
                 from PIL import ImageFont
                 try:
                     font = ImageFont.truetype("arial.ttf", 12)
                 except:
-                    # Fallback to default font
                     font = ImageFont.load_default()
             except:
                 pass
-            
-            # Draw circles and labels
-            for region in all_regions:
-                # Draw large, bright red circle
-                circle_radius = 20
-                draw.ellipse(
-                    [(region['x']-circle_radius, region['y']-circle_radius), 
-                     (region['x']+circle_radius, region['y']+circle_radius)], 
-                    outline=(255, 0, 0), width=3
-                )
                 
-                # Add text annotation with coordinates and color
-                label = f"{region['color']}: ({region['x']}, {region['y']})"
-                if font:
-                    draw.text(
-                        (region['x']+circle_radius+5, region['y']), 
-                        label,
-                        fill=(255, 0, 0),
-                        font=font
-                    )
-                else:
-                    draw.text(
-                        (region['x']+circle_radius+5, region['y']), 
-                        label,
-                        fill=(255, 0, 0)
-                    )
+            # Add legend text in the top-left corner
+            legend_text = "Disappeared claims:"
+            if font:
+                draw.text((10, 10), legend_text, fill=(255, 0, 0), font=font)
+                y_offset = 30
+                for color_name, stats in disappeared_claims.items():
+                    info_text = f"  {color_name}: {stats['decrease']} pixels"
+                    draw.text((10, y_offset), info_text, fill=(255, 0, 0), font=font)
+                    y_offset += 20
+            else:
+                draw.text((10, 10), legend_text, fill=(255, 0, 0))
+                y_offset = 30
+                for color_name, stats in disappeared_claims.items():
+                    info_text = f"  {color_name}: {stats['decrease']} pixels"
+                    draw.text((10, y_offset), info_text, fill=(255, 0, 0))
+                    y_offset += 20
         else:
             # For other detection methods, just draw rectangles
             for r in changes:
