@@ -64,43 +64,56 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
         if x_coord is not None and z_coord is not None:
             print(f"Navigating to coordinates X: {x_coord}, Z: {z_coord}...")
             
-            # Wait for the coordinate input elements to be available
-            page.wait_for_selector('div.position-input.pos-input input[type="number"]')
-            
-            # Get the input elements (first is X, second is Z)
-            input_elements = page.query_selector_all('div.position-input.pos-input input[type="number"]')
-            if len(input_elements) >= 2:
-                x_input = input_elements[0]
-                z_input = input_elements[1]
+            try:
+                # Wait for the coordinate input elements to be available
+                print(f"Waiting for coordinate inputs with {navigation_timeout/1000} second timeout...")
+                page.wait_for_selector('div.position-input.pos-input input[type="number"]', timeout=navigation_timeout)
                 
-                # Clear existing values and enter new coordinates
-                x_input.fill("")  # Clear first
-                x_input.type(str(x_coord))
-                z_input.fill("")  # Clear first
-                z_input.type(str(z_coord))
-                
-                # Press Enter to trigger the coordinate change
-                z_input.press("Enter")
-                
-                # Wait additional time for the map to update to the new position
-                print(f"Waiting for map to update to the new position...")
-                time.sleep(5)  # Additional wait time after entering coordinates
-            else:
-                print("Warning: Could not find coordinate input fields. Taking screenshot without navigating.")
+                # Get the input elements (first is X, second is Z)
+                input_elements = page.query_selector_all('div.position-input.pos-input input[type="number"]')
+                if len(input_elements) >= 2:
+                    x_input = input_elements[0]
+                    z_input = input_elements[1]
+                    
+                    # Clear existing values and enter new coordinates
+                    x_input.fill("")  # Clear first
+                    x_input.type(str(x_coord))
+                    z_input.fill("")  # Clear first
+                    z_input.type(str(z_coord))
+                    
+                    # Press Enter to trigger the coordinate change
+                    z_input.press("Enter")
+                    
+                    # Wait additional time for the map to update to the new position
+                    print(f"Waiting for map to update to the new position...")
+                    time.sleep(5)  # Additional wait time after entering coordinates
+                else:
+                    print("Warning: Could not find coordinate input fields. Taking screenshot without navigating.")
+            except Exception as e:
+                print(f"Warning: Could not find or interact with coordinate inputs: {e}")
+                print("Taking screenshot without navigating to coordinates.")
         
         # If zoom_out_clicks is specified, click the zoom-out button that many times
         if zoom_out_clicks > 0:
             print(f"Zooming out {zoom_out_clicks} time(s) for better view...")
-            zoom_out_button = page.query_selector("#zoom-buttons > div.svg-button:nth-child(2)")
-            
-            if zoom_out_button:
-                for i in range(zoom_out_clicks):
-                    zoom_out_button.click()
-                    print(f"Zoom out click {i+1}/{zoom_out_clicks}")
-                    # Wait for the map to update after zoom
-                    time.sleep(2)
-            else:
-                print("Warning: Could not find zoom-out button. Taking screenshot without zooming.")
+            try:
+                # Wait for zoom buttons to be available
+                print(f"Waiting for zoom buttons with {navigation_timeout/1000} second timeout...")
+                page.wait_for_selector("#zoom-buttons > div.svg-button", timeout=navigation_timeout)
+                
+                zoom_out_button = page.query_selector("#zoom-buttons > div.svg-button:nth-child(2)")
+                
+                if zoom_out_button:
+                    for i in range(zoom_out_clicks):
+                        zoom_out_button.click()
+                        print(f"Zoom out click {i+1}/{zoom_out_clicks}")
+                        # Wait for the map to update after zoom
+                        time.sleep(2)
+                else:
+                    print("Warning: Could not find zoom-out button. Taking screenshot without zooming.")
+            except Exception as e:
+                print(f"Warning: Could not find or interact with zoom buttons: {e}")
+                print("Taking screenshot without zooming.")
         
         # Take screenshot
         print("Taking screenshot...")
