@@ -51,6 +51,8 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `--json-output`: Path to save change detection results as JSON
 - `--min-area`: Minimum area in pixels for a change to be considered significant (default: 20)
 - `--threshold`: Threshold for pixel difference to be considered significant (default: 50)
+- `--focus-on-claims`: Focus only on land claim colors for change detection
+- `--color-tolerance`: How closely a pixel needs to match a land claim color (default: 30)
 
 ### Examples
 
@@ -108,10 +110,16 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq
 ```
 
-#### Land Claim Change Detection
+#### Land Claim Change Detection (Generic)
 
 ```bash
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare
+```
+
+#### Land Claim Color-Specific Detection
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --focus-on-claims --color-tolerance 30
 ```
 
 #### Complete Example with Change Visualization and JSON Output
@@ -153,5 +161,10 @@ This allows you to use the script in automated workflows or with a Discord bot t
 - If the map doesn't load properly, try increasing the wait time using the `-w` option
 - For high-resolution displays, you might want to increase the viewport size with `--width` and `--height`
 - If you encounter any browser-related issues, make sure you've installed the Playwright browsers with `python -m playwright install chromium`
-- If you're getting false positives in change detection, try increasing the `--threshold` and `--min-area` values
-- If land claims aren't being detected properly, try adjusting the `--posterize` value to better distinguish claim colors
+- If you're getting false positives in change detection, try:
+  - Enabling `--focus-on-claims` to only detect changes in land claim colors
+  - Adjusting `--color-tolerance` to fine-tune how strictly to match land claim colors (lower = stricter)
+  - Increasing the `--threshold` and `--min-area` values
+- If land claims aren't being detected properly, try:
+  - Adjusting the `--posterize` value to better distinguish claim colors
+  - Decreasing `--color-tolerance` if using color-specific detection

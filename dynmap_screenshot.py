@@ -158,7 +158,8 @@ def posterize_image(image_path, output_path=None, colors=16):
     print(f"Image posterized and saved to: {output_path}")
     return output_path
 
-def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20):
+def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20, 
+                       focus_on_claims=False, color_tolerance=30):
     """
     Compare two consecutive map images to detect disappeared land claims.
     
@@ -168,11 +169,25 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
         output_path: Path to save visualization of changes (if None, no visualization is saved)
         threshold: Threshold for pixel difference to be considered significant (default: 50)
         min_area: Minimum area in pixels for a change to be considered significant (default: 20)
+        focus_on_claims: Whether to focus only on land claim colors (default: False)
+        color_tolerance: How closely a pixel needs to match a land claim color (default: 30)
         
     Returns:
         Dictionary with results containing change information
     """
     print(f"Comparing with previous image: {previous_image}")
+    
+    # Define land claim colors (RGB values)
+    land_claim_colors = [
+        (163, 9, 7),     # Red
+        (10, 166, 40),   # Green
+        (164, 5, 165),   # Purple
+        (7, 9, 164),     # Blue
+        (244, 166, 6),   # Orange
+        (243, 242, 86),  # Yellow
+        (243, 244, 243), # White
+        (240, 87, 85),   # Coral
+    ]
     
     # Load images and ensure they're in RGB mode
     current_img = Image.open(current_image)
@@ -199,10 +214,43 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
             'error': 'Images have different dimensions'
         }
     
-    # Create difference map
-    diff = np.abs(current.astype(int) - previous.astype(int))
-    diff_sum = diff.sum(axis=2)  # Sum across RGB channels
-    change_mask = diff_sum > threshold
+    # Determine if we should focus only on land claim colors
+    if focus_on_claims:
+        print(f"Focusing detection on land claim colors with tolerance: {color_tolerance}")
+        
+        # Create masks for land claim colors
+        current_mask = np.zeros((current.shape[0], current.shape[1]), dtype=bool)
+        previous_mask = np.zeros((previous.shape[0], previous.shape[1]), dtype=bool)
+        
+        # For each land claim color, create a mask where that color exists
+        for color in land_claim_colors:
+            r, g, b = color
+            
+            # Create mask for current image
+            current_color_mask = (
+                (np.abs(current[:,:,0] - r) < color_tolerance) & 
+                (np.abs(current[:,:,1] - g) < color_tolerance) & 
+                (np.abs(current[:,:,2] - b) < color_tolerance)
+            )
+            current_mask = current_mask | current_color_mask
+            
+            # Create mask for previous image
+            previous_color_mask = (
+                (np.abs(previous[:,:,0] - r) < color_tolerance) & 
+                (np.abs(previous[:,:,1] - g) < color_tolerance) & 
+                (np.abs(previous[:,:,2] - b) < color_tolerance)
+            )
+            previous_mask = previous_mask | previous_color_mask
+        
+        # Find disappeared land claims (in previous but not in current)
+        change_mask = previous_mask & ~current_mask
+        print(f"Found {np.sum(change_mask)} pixels of potential disappeared land claims")
+    else:
+        # Use the original difference-based approach
+        print(f"Using general pixel difference detection with threshold: {threshold}")
+        diff = np.abs(current.astype(int) - previous.astype(int))
+        diff_sum = diff.sum(axis=2)  # Sum across RGB channels
+        change_mask = diff_sum > threshold
     
     # Find connected regions (potential disappeared claims)
     labeled, num_features = ndimage.label(change_mask)
@@ -391,6 +439,17 @@ def main():
         default=50,
         help="Threshold for pixel difference to be considered significant (default: 50)"
     )
+    parser.add_argument(
+        "--focus-on-claims",
+        action="store_true",
+        help="Focus only on land claim colors for change detection"
+    )
+    parser.add_argument(
+        "--color-tolerance",
+        type=int,
+        default=30,
+        help="How closely a pixel needs to match a land claim color (default: 30)"
+    )
     
     args = parser.parse_args()
     
@@ -450,7 +509,9 @@ def main():
                             prev_path, 
                             changes_output,
                             threshold=args.threshold,
-                            min_area=args.min_area
+                            min_area=args.min_area,
+                            focus_on_claims=args.focus_on_claims,
+                            color_tolerance=args.color_tolerance
                         )
                         
                         # Save results to JSON if requested
