@@ -54,7 +54,8 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `--focus-on-claims`: Focus only on land claim colors for change detection
 - `--color-tolerance`: How closely a pixel needs to match a land claim color (default: 30)
 - `--use-pixel-count`: Use color pixel count analysis to detect disappeared land claims
-- `--percent-threshold`: Percentage decrease threshold for pixel count analysis (default: 10.0)
+- `--percent-threshold`: Percentage decrease threshold for pixel count analysis (default: 1.0)
+- `--detect-any-change`: Detect ANY non-zero change in land claim colors, regardless of percentage
 
 ### Examples
 
@@ -127,8 +128,16 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 #### Pixel Count Analysis for Disappeared Claims
 
 ```bash
-python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --percent-threshold 10
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --percent-threshold 1
 ```
+
+#### Detect ANY Change in Land Claims
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --detect-any-change
+```
+
+This mode will detect even the smallest changes in land claim colors (1 pixel or more), ideal for monitoring when claims have disappeared.
 
 #### Debug Mode for Color Detection
 

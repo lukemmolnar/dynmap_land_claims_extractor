@@ -242,14 +242,16 @@ def find_disappeared_color_regions(current, previous, color_name):
     
     return regions
 
-def analyze_color_pixel_counts(current, previous, percent_threshold=10, debug=False):
+def analyze_color_pixel_counts(current, previous, percent_threshold=1, debug=False, detect_any_change=False):
     """
     Analyze changes in pixel counts for each land claim color between two images.
     
     Args:
         current: Numpy array of current image
         previous: Numpy array of previous image
-        percent_threshold: Percentage decrease threshold to consider significant (default: 10)
+        percent_threshold: Percentage decrease threshold to consider significant (default: 1)
+        debug: Whether to enable debug mode (default: False)
+        detect_any_change: Whether to detect ANY non-zero change (default: False)
         
     Returns:
         Dictionary with information about disappeared claims
@@ -362,7 +364,12 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10, debug=Fa
             decrease = previous_counts[color_name] - current_counts[color_name]
             percent_decrease = (decrease / previous_counts[color_name]) * 100
             
-            if decrease > 0 and percent_decrease > percent_threshold:
+            # If detect_any_change is True, any decrease > 0 is significant
+            # Otherwise, use the percent_threshold
+            is_significant = (decrease > 0 and 
+                            (detect_any_change or percent_decrease > percent_threshold))
+            
+            if is_significant:
                 disappeared_claims[color_name] = {
                     'previous_count': int(previous_counts[color_name]),
                     'current_count': int(current_counts[color_name]),
@@ -372,13 +379,16 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=10, debug=Fa
                 total_disappeared_pixels += int(decrease)
                 
                 if debug:
-                    print(f"\nDetected significant decrease in {color_name}: {decrease} pixels ({percent_decrease:.1f}%)")
+                    if detect_any_change:
+                        print(f"\nDetected disappearance in {color_name}: {decrease} pixels ({percent_decrease:.1f}%) - ANY CHANGE MODE")
+                    else:
+                        print(f"\nDetected significant decrease in {color_name}: {decrease} pixels ({percent_decrease:.1f}%)")
     
     return disappeared_claims, total_disappeared_pixels
 
 def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20, 
-                       focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=10,
-                       debug=False):
+                       focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=1,
+                       debug=False, detect_any_change=False):
     """
     Compare two consecutive map images to detect disappeared land claims.
     
@@ -438,9 +448,13 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
     # Determine which detection method to use
     if use_pixel_count:
         # Use color pixel count analysis
-        print(f"Using color pixel count analysis with percent threshold: {percent_threshold}%")
+        if detect_any_change:
+            print(f"Using color pixel count analysis - detecting ANY non-zero change in land claim colors")
+        else:
+            print(f"Using color pixel count analysis with percent threshold: {percent_threshold}%")
+            
         disappeared_claims, total_disappeared_pixels = analyze_color_pixel_counts(
-            current, previous, percent_threshold, debug
+            current, previous, percent_threshold, debug, detect_any_change
         )
         
         # Create a simple visualization of disappeared claims
@@ -783,8 +797,13 @@ def main():
     parser.add_argument(
         "--percent-threshold",
         type=float,
-        default=10.0,
-        help="Percentage decrease threshold for pixel count analysis (default: 10.0)"
+        default=1.0,
+        help="Percentage decrease threshold for pixel count analysis (default: 1.0)"
+    )
+    parser.add_argument(
+        "--detect-any-change",
+        action="store_true",
+        help="Detect ANY non-zero change in land claim colors, regardless of percentage"
     )
     parser.add_argument(
         "--debug",
@@ -855,7 +874,8 @@ def main():
                             color_tolerance=args.color_tolerance,
                             use_pixel_count=args.use_pixel_count,
                             percent_threshold=args.percent_threshold,
-                            debug=args.debug
+                            debug=args.debug,
+                            detect_any_change=args.detect_any_change
                         )
                         
                         # Save results to JSON if requested
