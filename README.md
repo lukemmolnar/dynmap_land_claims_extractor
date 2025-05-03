@@ -36,7 +36,8 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 
 #### Screenshot Capture Options
 - `-o, --output`: Path to save the screenshot (optional)
-- `-w, --wait`: Time in seconds to wait for the map to load (default: 10)
+- `-w, --wait`: Time in seconds to wait for the map to load after navigation completes (default: 10)
+- `--navigation-timeout`: Playwright navigation timeout in seconds (default: 60)
 - `--width`: Width of the viewport (default: 1920)
 - `--height`: Height of the viewport (default: 1080)
 - `-x, --x-coord`: X coordinate to navigate to before taking screenshot (optional)
@@ -73,8 +74,10 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 Adjust the wait time for slow connections:
 
 ```bash
-python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -w 15
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -w 15 --navigation-timeout 120
 ```
+
+This increases both the navigation timeout (to 120 seconds) and the post-navigation wait time (to 15 seconds).
 
 Change the viewport size:
 

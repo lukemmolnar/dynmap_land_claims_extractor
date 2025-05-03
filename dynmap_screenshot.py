@@ -20,7 +20,7 @@ from scipy import ndimage
 import sys
 
 def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, 
-                   x_coord=None, z_coord=None, zoom_out_clicks=1):
+                   x_coord=None, z_coord=None, zoom_out_clicks=1, navigation_timeout=60000):
     """
     Captures a screenshot of a dynmap webpage using Playwright.
     
@@ -52,8 +52,9 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
         # Create page with specified viewport
         page = browser.new_page(viewport={"width": viewport_width, "height": viewport_height})
         
-        # Go to the URL
-        page.goto(url)
+        # Go to the URL with extended timeout
+        print(f"Navigating to URL with {navigation_timeout/1000} second timeout...")
+        page.goto(url, timeout=navigation_timeout)
         
         # Wait for the map to initially load
         print(f"Waiting {wait_time} seconds for map to initially load...")
@@ -816,7 +817,8 @@ def process_map(map_id, map_config, args):
         args.height,
         x_coord,
         z_coord,
-        zoom_out
+        zoom_out,
+        navigation_timeout=args.navigation_timeout * 1000  # Convert to milliseconds
     )
     
     # Process the screenshot based on command line options
@@ -1004,6 +1006,12 @@ def main():
         action="store_true",
         help="Enable debug mode to show detailed color detection information"
     )
+    parser.add_argument(
+        "--navigation-timeout",
+        type=int,
+        default=60,
+        help="Playwright navigation timeout in seconds (default: 60)"
+    )
     
     args = parser.parse_args()
     
@@ -1069,7 +1077,8 @@ def main():
             args.height,
             args.x_coord,
             args.z_coord,
-            args.zoom_out
+            args.zoom_out,
+            navigation_timeout=args.navigation_timeout * 1000  # Convert to milliseconds
         )
         
         # Process the screenshot based on command line options
