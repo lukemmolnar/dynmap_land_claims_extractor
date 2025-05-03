@@ -1,0 +1,26 @@
+{
+  "abex1": {
+    "url": "https://map.stoneworks.gg/abex1/#abex_1:-1874:0:114:1500:0:0:0:0:perspective",
+    "x": -6826,
+    "z": -4791,
+    "zoom_out": 2
+  },
+  "abex2": {
+    "url": "https://map.stoneworks.gg/abex2/#abex_2:-1840:0:106:1500:0:0:0:0:perspective",
+    "x": 3359,
+    "z": -4838,
+    "zoom_out": 2
+  },
+  "abex3": {
+    "url": "https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective",
+    "x": -6780,
+    "z": 5093,
+    "zoom_out": 2
+  },
+  "abex4": {
+    "url": "https://map.stoneworks.gg/abex4/#abex_4:-1841:0:146:1500:0:0:0:0:perspective",
+    "x": 3639,
+    "z": 4925,
+    "zoom_out": 2
+  }
+}

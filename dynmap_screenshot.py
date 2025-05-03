@@ -2,7 +2,8 @@
 """
 Dynmap Screenshot Bot
 ---------------------
-A script to capture screenshots of a Minecraft dynmap webpage.
+A script to capture screenshots of a Minecraft dynmap webpage and monitor for disappeared land claims.
+Supports monitoring multiple maps simultaneously with different coordinate settings.
 """
 
 from playwright.sync_api import sync_playwright
@@ -16,6 +17,7 @@ from datetime import datetime
 from PIL import Image, ImageDraw
 import numpy as np
 from scipy import ndimage
+import sys
 
 def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, viewport_height=1080, 
                    x_coord=None, z_coord=None, zoom_out_clicks=1):
@@ -109,19 +111,56 @@ def capture_dynmap(url, output_path=None, wait_time=10, viewport_width=1920, vie
     print(f"Screenshot saved to: {output_path}")
     return output_path
 
-def get_next_image_number():
+def load_map_config(config_file):
+    """
+    Load map configuration from a JSON file.
+    
+    Args:
+        config_file: Path to the JSON config file containing map information
+        
+    Returns:
+        Dictionary with map configurations
+    """
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        return config
+    except FileNotFoundError:
+        print(f"Error: Config file {config_file} not found.")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Error: Config file {config_file} is not valid JSON.")
+        return {}
+
+def ensure_map_directories(map_id):
+    """
+    Ensure required directories exist for the specified map.
+    
+    Args:
+        map_id: The ID of the map (e.g., abex1, abex2)
+    """
+    os.makedirs(f"screenshots/{map_id}", exist_ok=True)
+    os.makedirs(f"claim_disappearances/{map_id}", exist_ok=True)
+    
+def get_next_image_number(map_id=None):
     """
     Get the next sequential image number by examining existing files.
     
+    Args:
+        map_id: The ID of the map (e.g., abex1, abex2)
+        
     Returns:
         int: The next available image number
     """
+    prefix = f"{map_id}_" if map_id else "dynmap_"
+    pattern = f"screenshots/{map_id}/{prefix}*.png" if map_id else f"{prefix}*.png"
+    
     # Check for existing numbered images and find highest
-    files = glob.glob("dynmap_*.png")
+    files = glob.glob(pattern)
     if files:
         numbers = []
         for f in files:
-            match = re.search(r'dynmap_(\d+)\.png', f)
+            match = re.search(rf'{prefix}(\d+)\.png', f)
             if match:
                 numbers.append(int(match.group(1)))
         next_num = max(numbers) + 1 if numbers else 1
@@ -720,11 +759,140 @@ def crop_to_red_border(image_path, output_path=None):
     img.save(output_path)
     return output_path
 
+def process_map(map_id, map_config, args):
+    """
+    Process a single map specified by map_id.
+    
+    Args:
+        map_id: The ID of the map (e.g., abex1, abex2)
+        map_config: The configuration for this map
+        args: Command-line arguments
+        
+    Returns:
+        True if changes were detected, False otherwise
+    """
+    print(f"\n===== Processing Map: {map_id} =====")
+    
+    # Extract config for this map
+    url = map_config.get("url")
+    x_coord = map_config.get("x")
+    z_coord = map_config.get("z")
+    zoom_out = map_config.get("zoom_out", 2)
+    
+    if not url:
+        print(f"Error: URL not specified for map {map_id}")
+        return False
+    
+    # Create directories for this map
+    ensure_map_directories(map_id)
+    
+    # Determine output path
+    if args.output:
+        # User-specified output path
+        output_path = args.output
+        if map_id:
+            # Add map ID prefix if not already present
+            base_name = os.path.basename(output_path)
+            if not base_name.startswith(f"{map_id}_"):
+                dir_name = os.path.dirname(output_path)
+                output_path = os.path.join(dir_name, f"{map_id}_{base_name}")
+    else:
+        # Automatic output path
+        if args.seq:
+            # Use sequential numbering
+            num = get_next_image_number(map_id)
+            output_path = f"screenshots/{map_id}/{map_id}_{num:03d}.png"
+        else:
+            # Use timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"screenshots/{map_id}/{map_id}_{timestamp}.png"
+    
+    # Capture the screenshot
+    screenshot_path = capture_dynmap(
+        url, 
+        output_path, 
+        args.wait, 
+        args.width, 
+        args.height,
+        x_coord,
+        z_coord,
+        zoom_out
+    )
+    
+    # Process the screenshot based on command line options
+    if args.crop and screenshot_path:
+        screenshot_path = crop_to_red_border(screenshot_path)
+    
+    # Posterize the image if requested
+    if args.posterize > 0 and screenshot_path:
+        screenshot_path = posterize_image(screenshot_path, colors=args.posterize)
+    
+    # Compare with previous image if requested
+    changes_detected = False
+    if args.compare and screenshot_path:
+        # Get previous image path based on current image name
+        if args.seq:
+            # Extract current image number
+            match = re.search(rf'{map_id}_(\d+)\.png', os.path.basename(screenshot_path))
+            if match:
+                current_num = int(match.group(1))
+                if current_num > 1:
+                    prev_num = current_num - 1
+                    prev_path = f"screenshots/{map_id}/{map_id}_{prev_num:03d}.png"
+                    
+                    if os.path.exists(prev_path):
+                        # Generate visualization path if not specified
+                        changes_output = args.changes_output
+                        if changes_output is None and current_num > 1:
+                            changes_output = f"claim_disappearances/{map_id}/changes_{map_id}_{current_num:03d}.png"
+                        
+                        # Compare and detect changes
+                        results = detect_claim_changes(
+                            screenshot_path, 
+                            prev_path, 
+                            changes_output,
+                            threshold=args.threshold,
+                            min_area=args.min_area,
+                            focus_on_claims=args.focus_on_claims,
+                            color_tolerance=args.color_tolerance,
+                            use_pixel_count=args.use_pixel_count,
+                            percent_threshold=args.percent_threshold,
+                            debug=args.debug,
+                            detect_any_change=args.detect_any_change
+                        )
+                        
+                        # Save results to JSON if requested
+                        if args.json_output and results['changes_detected']:
+                            json_output = args.json_output
+                            # Modify JSON output path to include map ID if needed
+                            if not json_output.startswith(f"claim_disappearances/{map_id}/"):
+                                base_name = os.path.basename(json_output)
+                                json_output = f"claim_disappearances/{map_id}/{base_name}"
+                            
+                            with open(json_output, 'w') as f:
+                                json.dump(results, f, indent=2)
+                            print(f"Results saved to: {json_output}")
+                        
+                        # Update changes_detected flag
+                        changes_detected = results['changes_detected']
+                    else:
+                        print(f"No previous image found: {prev_path}")
+    
+    print(f"Finished processing map: {map_id}")
+    return changes_detected
+
 def main():
     """Main function to parse command line arguments and capture the screenshot."""
-    parser = argparse.ArgumentParser(description="Capture screenshots of Minecraft dynmap webpages")
+    parser = argparse.ArgumentParser(description="Capture screenshots of Minecraft dynmap webpages and monitor for disappeared land claims")
     
-    parser.add_argument("url", help="The URL of the dynmap to capture")
+    # Map selection options
+    map_group = parser.add_argument_group('Map Selection')
+    map_group.add_argument("--map", help="The ID of the map to process (e.g., abex1, abex2, etc.)")
+    map_group.add_argument("--all-maps", action="store_true", help="Process all maps defined in the config file")
+    map_group.add_argument("--config-file", default="maps.json", help="Path to the map configuration file (default: maps.json)")
+    
+    # For backward compatibility, keep the URL argument but make it optional
+    parser.add_argument("url", nargs="?", help="The URL of the dynmap to capture (legacy option, prefer using --map or --all-maps)")
     parser.add_argument(
         "-o", "--output", 
         help="Path to save the screenshot. If not provided, a sequentially numbered filename is used."
@@ -839,83 +1007,127 @@ def main():
     
     args = parser.parse_args()
     
-    # Determine output path
-    output_path = args.output
-    if output_path is None:
-        if args.seq:
-            # Use sequential numbering
-            num = get_next_image_number()
-            output_path = f"dynmap_{num:03d}.png"
-        else:
-            # Use timestamped filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = f"dynmap_screenshot_{timestamp}.png"
+    args = parser.parse_args()
     
-    # Capture the screenshot
-    screenshot_path = capture_dynmap(
-        args.url, 
-        output_path, 
-        args.wait, 
-        args.width, 
-        args.height,
-        args.x_coord,
-        args.z_coord,
-        args.zoom_out
-    )
+    # Ensure screenshots directory exists
+    os.makedirs("screenshots", exist_ok=True)
     
-    # Process the screenshot based on command line options
-    if args.crop and screenshot_path:
-        screenshot_path = crop_to_red_border(screenshot_path)
+    # Load map configuration
+    if args.map or args.all_maps:
+        map_config = load_map_config(args.config_file)
+        if not map_config:
+            print("Error: No valid map configuration found. Exiting.")
+            return 1
     
-    # Posterize the image if requested
-    if args.posterize > 0 and screenshot_path:
-        screenshot_path = posterize_image(screenshot_path, colors=args.posterize)
+        changes_detected = False
+        
+        if args.all_maps:
+            # Process all maps in the config
+            print(f"Processing all maps in {args.config_file}...")
+            for map_id, config in map_config.items():
+                map_changes = process_map(map_id, config, args)
+                changes_detected = changes_detected or map_changes
+        elif args.map:
+            # Process just the specified map
+            if args.map in map_config:
+                map_changes = process_map(args.map, map_config[args.map], args)
+                changes_detected = changes_detected or map_changes
+            else:
+                print(f"Error: Map '{args.map}' not found in the configuration file.")
+                return 1
+        
+        # Set exit code based on whether changes were detected
+        if changes_detected:
+            print("Changes detected! Use exit code 1")
+            return 1  # Changes detected
     
-    # Compare with previous image if requested
-    if args.compare and screenshot_path:
-        # Get previous image path based on current image name
-        if args.seq:
-            # Extract current image number
-            match = re.search(r'dynmap_(\d+)\.png', screenshot_path)
-            if match:
-                current_num = int(match.group(1))
-                if current_num > 1:
-                    prev_num = current_num - 1
-                    prev_path = f"dynmap_{prev_num:03d}.png"
-                    
-                    if os.path.exists(prev_path):
-                        # Generate visualization path if not specified
-                        changes_output = args.changes_output
-                        if changes_output is None and current_num > 1:
-                            changes_output = f"changes_{current_num:03d}.png"
+    elif args.url:
+        # Legacy mode - process a single URL without using the map configuration
+        print("Warning: Using legacy mode with direct URL. Consider using --map or --all-maps instead.")
+        
+        # Create screenshots directory
+        os.makedirs("screenshots", exist_ok=True)
+        
+        # Determine output path
+        output_path = args.output
+        if output_path is None:
+            if args.seq:
+                # Use sequential numbering
+                num = get_next_image_number()
+                output_path = f"screenshots/dynmap_{num:03d}.png"
+            else:
+                # Use timestamped filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"screenshots/dynmap_screenshot_{timestamp}.png"
+        
+        # Capture the screenshot
+        screenshot_path = capture_dynmap(
+            args.url, 
+            output_path, 
+            args.wait, 
+            args.width, 
+            args.height,
+            args.x_coord,
+            args.z_coord,
+            args.zoom_out
+        )
+        
+        # Process the screenshot based on command line options
+        if args.crop and screenshot_path:
+            screenshot_path = crop_to_red_border(screenshot_path)
+        
+        # Posterize the image if requested
+        if args.posterize > 0 and screenshot_path:
+            screenshot_path = posterize_image(screenshot_path, colors=args.posterize)
+        
+        # Compare with previous image if requested
+        if args.compare and screenshot_path:
+            # Get previous image path based on current image name
+            if args.seq:
+                # Extract current image number
+                match = re.search(r'dynmap_(\d+)\.png', os.path.basename(screenshot_path))
+                if match:
+                    current_num = int(match.group(1))
+                    if current_num > 1:
+                        prev_num = current_num - 1
+                        prev_path = f"screenshots/dynmap_{prev_num:03d}.png"
                         
-                        # Compare and detect changes
-                        results = detect_claim_changes(
-                            screenshot_path, 
-                            prev_path, 
-                            changes_output,
-                            threshold=args.threshold,
-                            min_area=args.min_area,
-                            focus_on_claims=args.focus_on_claims,
-                            color_tolerance=args.color_tolerance,
-                            use_pixel_count=args.use_pixel_count,
-                            percent_threshold=args.percent_threshold,
-                            debug=args.debug,
-                            detect_any_change=args.detect_any_change
-                        )
-                        
-                        # Save results to JSON if requested
-                        if args.json_output and results['changes_detected']:
-                            with open(args.json_output, 'w') as f:
-                                json.dump(results, f, indent=2)
-                            print(f"Results saved to: {args.json_output}")
-                        
-                        # Set exit code based on whether changes were detected
-                        if results['changes_detected']:
-                            print("Changes detected! Use exit code 1")
-                            exit(1)  # Changes detected
-                    else:
-                        print(f"No previous image found: {prev_path}")
+                        if os.path.exists(prev_path):
+                            # Generate visualization path if not specified
+                            changes_output = args.changes_output
+                            if changes_output is None and current_num > 1:
+                                changes_output = f"claim_disappearances/changes_{current_num:03d}.png"
+                            
+                            # Compare and detect changes
+                            results = detect_claim_changes(
+                                screenshot_path, 
+                                prev_path, 
+                                changes_output,
+                                threshold=args.threshold,
+                                min_area=args.min_area,
+                                focus_on_claims=args.focus_on_claims,
+                                color_tolerance=args.color_tolerance,
+                                use_pixel_count=args.use_pixel_count,
+                                percent_threshold=args.percent_threshold,
+                                debug=args.debug,
+                                detect_any_change=args.detect_any_change
+                            )
+                            
+                            # Save results to JSON if requested
+                            if args.json_output and results['changes_detected']:
+                                with open(args.json_output, 'w') as f:
+                                    json.dump(results, f, indent=2)
+                                print(f"Results saved to: {args.json_output}")
+                            
+                            # Set exit code based on whether changes were detected
+                            if results['changes_detected']:
+                                print("Changes detected! Use exit code 1")
+                                return 1  # Changes detected
+                        else:
+                            print(f"No previous image found: {prev_path}")
+    else:
+        parser.print_help()
+        return 1
     
     print("Finished processing")
     return 0  # No changes detected or comparison not enabled

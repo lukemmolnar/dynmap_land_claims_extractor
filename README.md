@@ -1,6 +1,6 @@
 # Dynmap Land Claims Detector
 
-A Python script that captures screenshots of Minecraft dynmap webpages and monitors for disappeared land claims.
+A Python script that captures screenshots of Minecraft dynmap webpages and monitors for disappeared land claims across multiple maps.
 
 ## Installation
 
@@ -28,6 +28,11 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 This will capture a screenshot of the specified dynmap URL and save it with a timestamped filename (e.g., `dynmap_screenshot_20250502_160500.png`).
 
 ### Command-line Options
+
+#### Map Selection
+- `--map`: The ID of the map to process (e.g., abex1, abex2)
+- `--all-maps`: Process all maps defined in the config file
+- `--config-file`: Path to the map configuration file (default: maps.json)
 
 #### Screenshot Capture Options
 - `-o, --output`: Path to save the screenshot (optional)
@@ -159,6 +164,23 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 ```
 
 This makes it extremely easy to pinpoint exactly where to look for loot in-game, as you can see the exact shape and position of the disappeared claim.
+
+#### Multi-Map Monitoring
+
+Process a specific map defined in maps.json:
+```bash
+python dynmap_screenshot.py --map abex1 --crop --posterize 16 --seq --compare --use-pixel-count --detect-any-change
+```
+
+Process all maps defined in maps.json:
+```bash
+python dynmap_screenshot.py --all-maps --crop --posterize 16 --seq --compare --use-pixel-count --detect-any-change
+```
+
+Using a custom configuration file:
+```bash
+python dynmap_screenshot.py --all-maps --config-file my_maps.json --crop --posterize 16 --seq --compare --use-pixel-count
+```
 
 #### Complete Example with Change Visualization and JSON Output
 
