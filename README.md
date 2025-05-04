@@ -58,6 +58,7 @@ This will capture a screenshot of the specified dynmap URL and save it with a ti
 - `--min-area`: Minimum area in pixels for a change to be considered significant (default: 20)
 - `--threshold`: Threshold for pixel difference to be considered significant (default: 50)
 - `--focus-on-claims`: Focus only on land claim colors for change detection
+- `--unified-claims`: Treat all land claim colors as one unified color for more robust detection of color shifts
 - `--color-tolerance`: How closely a pixel needs to match a land claim color (default: 30)
 - `--use-pixel-count`: Use color pixel count analysis to detect disappeared land claims
 - `--percent-threshold`: Percentage decrease threshold for pixel count analysis (default: 1.0)
@@ -146,6 +147,14 @@ python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:
 ```
 
 This mode will detect even the smallest changes in land claim colors (1 pixel or more), ideal for monitoring when claims have disappeared.
+
+#### Unified Land Claim Detection (for color shift robustness)
+
+```bash
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --unified-claims --color-tolerance 40
+```
+
+This mode treats all land claim colors as a unified group, making detection more robust against color shifts that might occur on the dynmap. Increasing the color tolerance (e.g., to 40) allows matching more color variations.
 
 #### Supported Land Claim Colors
 

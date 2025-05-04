@@ -1,0 +1,14 @@
+[Unit]
+Description=Discord Notification Bot for Dynmap Land Claims
+After=network.target
+
+[Service]
+Type=simple
+User=website
+WorkingDirectory=/home/website/dynmap_land_claims_extractor
+ExecStart=/usr/bin/python3 /home/website/dynmap_land_claims_extractor/discord_notification_bot.py
+Restart=on-failure
+# Environment variables are now loaded from .env file
+
+[Install]
+WantedBy=multi-user.target

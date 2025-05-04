@@ -277,6 +277,63 @@ def get_disappeared_mask(current, previous, color_name):
     
     return disappeared_mask
 
+def create_land_claim_mask(image_array, color_variations=None, color_tolerance=0):
+    """
+    Create a binary mask identifying all land claim colors in an image.
+    
+    Args:
+        image_array: Numpy array of the image
+        color_variations: Dictionary of land claim colors with their variations
+        color_tolerance: How closely a pixel needs to match a land claim color
+        
+    Returns:
+        Boolean mask where True = land claim pixel, False = not a land claim
+    """
+    # Use predefined color variations if not provided
+    if color_variations is None:
+        color_variations = {
+            "red": [(163, 9, 7), (162, 8, 6), (164, 10, 8)],
+            "green": [(10, 166, 40), (9, 165, 39), (11, 167, 41)],
+            "purple": [(164, 5, 165), (163, 4, 164), (165, 6, 166)],
+            "blue": [(7, 9, 164), (6, 8, 163), (8, 10, 165)],
+            "orange": [(244, 166, 6), (243, 165, 5), (245, 167, 7)],
+            "yellow": [(243, 242, 86), (242, 241, 85), (244, 243, 87), (240, 240, 80), (245, 245, 90)],
+            "white": [(243, 244, 243), (242, 243, 242), (244, 245, 244)],
+            "coral": [(240, 87, 85), (239, 86, 84), (241, 88, 86)],
+            "black": [(18, 17, 11), (17, 16, 10), (19, 18, 12)],
+            "light_blue": [(85, 86, 245), (84, 85, 244), (86, 87, 246)],
+            "teal": [(6, 165, 163), (5, 164, 162), (7, 166, 164)],
+            "ice_blue": [(169, 234, 243), (168, 233, 242), (170, 235, 244)]
+        }
+    
+    # Create empty mask for the image
+    mask = np.zeros((image_array.shape[0], image_array.shape[1]), dtype=bool)
+    
+    if color_tolerance > 0:
+        # Use tolerance-based matching for all land claim colors
+        for color_list in color_variations.values():
+            for color in color_list:
+                r, g, b = color
+                color_mask = (
+                    (np.abs(image_array[:,:,0] - r) < color_tolerance) & 
+                    (np.abs(image_array[:,:,1] - g) < color_tolerance) & 
+                    (np.abs(image_array[:,:,2] - b) < color_tolerance)
+                )
+                mask = mask | color_mask
+    else:
+        # Use exact matching with predefined variations
+        for color_list in color_variations.values():
+            for color in color_list:
+                r, g, b = color
+                color_mask = (
+                    (image_array[:,:,0] == r) & 
+                    (image_array[:,:,1] == g) & 
+                    (image_array[:,:,2] == b)
+                )
+                mask = mask | color_mask
+    
+    return mask
+
 def find_disappeared_color_regions(current, previous, color_name):
     """
     Find regions where a specific color disappeared between images.
@@ -468,7 +525,7 @@ def analyze_color_pixel_counts(current, previous, percent_threshold=1, debug=Fal
 
 def detect_claim_changes(current_image, previous_image, output_path=None, threshold=50, min_area=20, 
                        focus_on_claims=False, color_tolerance=30, use_pixel_count=False, percent_threshold=1,
-                       debug=False, detect_any_change=False):
+                       debug=False, detect_any_change=False, dim_factor=0.5, unified_claims=False):
     """
     Compare two consecutive map images to detect disappeared land claims.
     
@@ -558,32 +615,23 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
             }
             changes.append(region)
         
-    elif focus_on_claims:
-        print(f"Focusing detection on land claim colors with tolerance: {color_tolerance}")
+    elif unified_claims or focus_on_claims:
+        if unified_claims:
+            print(f"Using unified land claim detection with tolerance: {color_tolerance}")
+        else:
+            print(f"Focusing detection on land claim colors with tolerance: {color_tolerance}")
         
-        # Create masks for land claim colors
-        current_mask = np.zeros((current.shape[0], current.shape[1]), dtype=bool)
-        previous_mask = np.zeros((previous.shape[0], previous.shape[1]), dtype=bool)
+        # Create masks for land claim colors using the unified approach
+        current_mask = create_land_claim_mask(current, color_tolerance=color_tolerance)
+        previous_mask = create_land_claim_mask(previous, color_tolerance=color_tolerance)
         
-        # For each land claim color, create a mask where that color exists
-        for color in land_claim_colors:
-            r, g, b = color
-            
-            # Create mask for current image
-            current_color_mask = (
-                (np.abs(current[:,:,0] - r) < color_tolerance) & 
-                (np.abs(current[:,:,1] - g) < color_tolerance) & 
-                (np.abs(current[:,:,2] - b) < color_tolerance)
-            )
-            current_mask = current_mask | current_color_mask
-            
-            # Create mask for previous image
-            previous_color_mask = (
-                (np.abs(previous[:,:,0] - r) < color_tolerance) & 
-                (np.abs(previous[:,:,1] - g) < color_tolerance) & 
-                (np.abs(previous[:,:,2] - b) < color_tolerance)
-            )
-            previous_mask = previous_mask | previous_color_mask
+        if debug:
+            # Save the unified masks for debugging
+            os.makedirs("debug", exist_ok=True)
+            current_mask_img = Image.fromarray((current_mask * 255).astype(np.uint8))
+            previous_mask_img = Image.fromarray((previous_mask * 255).astype(np.uint8))
+            current_mask_img.save("debug/current_unified_mask.png")
+            previous_mask_img.save("debug/previous_unified_mask.png")
         
         # Find disappeared land claims (in previous but not in current)
         change_mask = previous_mask & ~current_mask
@@ -642,8 +690,7 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
             basename = os.path.basename(output_path)
             output_path = f"claim_disappearances/{basename}"
         
-        # Get dim factor from args (default is 0.5, or 50% brightness)
-        dim_factor = args.dim_factor if hasattr(args, 'dim_factor') else 0.5
+        # Use the dim_factor parameter (default is 0.5, or 50% brightness)
         
         # Create the visualization
         vis_img = Image.open(current_image).copy()
@@ -897,7 +944,9 @@ def process_map(map_id, map_config, args):
                             use_pixel_count=args.use_pixel_count,
                             percent_threshold=args.percent_threshold,
                             debug=args.debug,
-                            detect_any_change=args.detect_any_change
+                            detect_any_change=args.detect_any_change,
+                            dim_factor=args.dim_factor,
+                            unified_claims=args.unified_claims
                         )
                         
                         # Save results to JSON if requested
@@ -1070,6 +1119,11 @@ def main():
         default=0.5,
         help="Factor to dim the background image (0.0-1.0) to make disappeared claims stand out (default: 0.5)"
     )
+    parser.add_argument(
+        "--unified-claims",
+        action="store_true",
+        help="Treat all land claim colors as one unified color for more robust color shift detection"
+    )
     
     args = parser.parse_args()
     
@@ -1220,7 +1274,9 @@ def main():
                                 use_pixel_count=args.use_pixel_count,
                                 percent_threshold=args.percent_threshold,
                                 debug=args.debug,
-                                detect_any_change=args.detect_any_change
+                                detect_any_change=args.detect_any_change,
+                                dim_factor=args.dim_factor,
+                                unified_claims=args.unified_claims
                             )
                             
                             # Save results to JSON if requested
