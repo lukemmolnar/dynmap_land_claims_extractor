@@ -642,8 +642,22 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
             basename = os.path.basename(output_path)
             output_path = f"claim_disappearances/{basename}"
         
+        # Get dim factor from args (default is 0.5, or 50% brightness)
+        dim_factor = args.dim_factor if hasattr(args, 'dim_factor') else 0.5
+        
         # Create the visualization
         vis_img = Image.open(current_image).copy()
+        
+        # Convert visualization image to RGB mode if needed
+        if vis_img.mode != 'RGB':
+            vis_img = vis_img.convert('RGB')
+        
+        # Dim the entire image
+        print(f"Dimming background image by {(1-dim_factor)*100:.1f}% to make disappeared claims stand out...")
+        pixels = np.array(vis_img)
+        pixels = (pixels * dim_factor).astype(np.uint8)  # dim_factor = 0.5 would reduce brightness by 50%
+        vis_img = Image.fromarray(pixels)
+        
         draw = ImageDraw.Draw(vis_img)
         
         # For pixel count analysis, find the actual regions where colors disappeared
@@ -655,13 +669,9 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                     all_regions.extend(regions)
             
             # Get disappeared pixels for each color and highlight them in bright red
-            print("Creating hybrid visualization of disappeared land claims (pixels + circles)...")
-            
-            # Convert visualization image to RGB mode if needed
-            if vis_img.mode != 'RGB':
-                vis_img = vis_img.convert('RGB')
+            print("Creating pixel-perfect visualization of disappeared land claims...")
                 
-            # For each color that disappeared, highlight its pixels in red
+            # For each color that disappeared, highlight its pixels in bright red
             for color_name in disappeared_claims.keys():
                 print(f"  - Highlighting disappeared {color_name} pixels")
                 
@@ -672,30 +682,7 @@ def detect_claim_changes(current_image, previous_image, output_path=None, thresh
                 y_indices, x_indices = np.where(disappeared_mask)
                 for i in range(len(y_indices)):
                     y, x = y_indices[i], x_indices[i]
-                    vis_img.putpixel((x, y), (255, 0, 0))  # Bright red
-            
-            # Add circles around each region for better visibility
-            print("Adding highlight circles around disappeared regions...")
-            if all_regions:
-                for region in all_regions:
-                    # Calculate appropriate circle size based on region size
-                    # Scale with region area but with minimum and maximum sizes
-                    area_factor = region['area'] ** 0.5 * 0.7  # Square root of area * scaling factor
-                    circle_radius = max(20, min(50, area_factor))
-                    
-                    # Draw circle centered on the region
-                    draw.ellipse(
-                        [(region['x']-circle_radius, region['y']-circle_radius), 
-                         (region['x']+circle_radius, region['y']+circle_radius)], 
-                        outline=(255, 0, 0), width=3
-                    )
-                    
-                    # Add small crosshair at center for precise positioning
-                    crosshair_size = 5
-                    draw.line([(region['x']-crosshair_size, region['y']), (region['x']+crosshair_size, region['y'])], 
-                             fill=(255, 0, 0), width=1)
-                    draw.line([(region['x'], region['y']-crosshair_size), (region['x'], region['y']+crosshair_size)], 
-                             fill=(255, 0, 0), width=1)
+                    vis_img.putpixel((x, y), (255, 0, 0))  # Bright red - NOT dimmed
             
             # Add a legend to show which colors disappeared
             font = None
@@ -1076,6 +1063,12 @@ def main():
     parser.add_argument(
         "--map-order",
         help="Comma-separated list to control map processing order (e.g., 'abex1,abex4,abex2,abex3')"
+    )
+    parser.add_argument(
+        "--dim-factor",
+        type=float,
+        default=0.5,
+        help="Factor to dim the background image (0.0-1.0) to make disappeared claims stand out (default: 0.5)"
     )
     
     args = parser.parse_args()

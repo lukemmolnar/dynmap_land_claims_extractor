@@ -135,6 +135,9 @@ def main():
     current_image_path = "dynmap_010.png"  # Replace with your current image
     previous_image_path = "dynmap_011.png"  # Replace with your previous image
     
+    # Dim factor to make disappeared claims stand out
+    dim_factor = 0.5  # 50% brightness - change this to test different values
+    
     if not os.path.exists(current_image_path) or not os.path.exists(previous_image_path):
         print(f"Error: Couldn't find test images. Please make sure {current_image_path} and {previous_image_path} exist.")
         return
@@ -156,6 +159,17 @@ def main():
         # Create visualization
         print("Creating pixel-perfect visualization...")
         vis_img = current_img.copy()
+        
+        # Convert to RGB mode if needed
+        if vis_img.mode != 'RGB':
+            vis_img = vis_img.convert('RGB')
+        
+        # Dim the entire image
+        print(f"Dimming background image by {(1-dim_factor)*100:.1f}% to make disappeared claims stand out...")
+        pixels = np.array(vis_img)
+        pixels = (pixels * dim_factor).astype(np.uint8)  # Reduce brightness
+        vis_img = Image.fromarray(pixels)
+        
         draw = ImageDraw.Draw(vis_img)
         
         # For each color that disappeared, highlight its pixels in red
@@ -165,7 +179,7 @@ def main():
             # Get mask for this color
             disappeared_mask = get_disappeared_mask(current, previous, color_name)
             
-            # Color each disappeared pixel bright red
+            # Color each disappeared pixel bright red (not dimmed)
             y_indices, x_indices = np.where(disappeared_mask)
             for i in range(len(y_indices)):
                 y, x = y_indices[i], x_indices[i]

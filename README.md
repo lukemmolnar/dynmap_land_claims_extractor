@@ -177,21 +177,23 @@ This mode will:
 - Save mask images to the `debug` folder showing which pixels match each color
 - Show pixel counts for all colors and their differences between images
 
-#### Hybrid Visualization of Disappeared Claims
+#### Enhanced Visualization of Disappeared Claims
 
-All detected claim disappearances are now saved to the `claim_disappearances` folder with a **hybrid visualization approach**:
+All detected claim disappearances are now automatically saved to the `claim_disappearances` folder with **pixel-perfect accuracy** and **enhanced contrast**:
 
-1. **Pixel-perfect highlighting**: Exact pixels that disappeared are colored bright red
-2. **Circle overlays**: Red circles surround each region of disappeared pixels for easy spotting
-3. **Center crosshairs**: Small crosshairs mark the exact center of each region
-
-This dual approach provides both precision (you can see exactly which pixels disappeared) and visibility (the circles make changes easy to spot at a glance).
+1. **Pixel-perfect highlighting**: Instead of approximate circles, the script highlights the exact pixels that disappeared in bright red
+2. **Dimmed background**: The background image is dimmed by default to 50% brightness, making the red disappeared claims stand out dramatically
+3. **Adjustable dimming**: Control the background dimming with the `--dim-factor` parameter (0.0-1.0)
 
 ```bash
+# Default dimming (50% brightness)
 python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count
+
+# Stronger dimming (30% brightness)
+python dynmap_screenshot.py https://map.stoneworks.gg/abex3/#abex_3:-1874:0:143:1500:0:0:0:0:perspective -x -6780 -z 5093 --crop --posterize 16 --seq --compare --use-pixel-count --dim-factor 0.3
 ```
 
-This makes it extremely easy to pinpoint exactly where to look for loot in-game, as you can see the exact shape and position of the disappeared claim.
+This makes it extremely easy to pinpoint exactly where to look for loot in-game, as the bright red disappeared claims stand out vividly against the dimmed background.
 
 #### Multi-Map Monitoring
 
@@ -209,24 +211,6 @@ Using a custom configuration file:
 ```bash
 python dynmap_screenshot.py --all-maps --config-file my_maps.json --crop --posterize 16 --seq --compare --use-pixel-count
 ```
-
-#### Advanced Multi-Map Options
-
-Control map processing order:
-```bash
-python dynmap_screenshot.py --all-maps --map-order abex1,abex4,abex2,abex3 --crop --posterize 16 --seq --compare
-```
-
-Add retry logic for network issues:
-```bash
-python dynmap_screenshot.py --all-maps --max-retries 5 --continue-on-error --navigation-timeout 120 -w 15
-```
-
-This will:
-- Try each map up to 5 times if network errors occur
-- Skip maps that consistently fail after all retries
-- Use 120 seconds timeout for network connections
-- Wait 15 seconds after navigation for map loading
 
 #### Complete Example with Change Visualization and JSON Output
 
